@@ -15,7 +15,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Vita RomM")
 set(VITA_TITLEID "ROMM00001")
 set(VITA_VERSION "01.00")
-set(ROMM_VITA_VERSION "0.2.3")
+set(ROMM_VITA_VERSION "0.2.10")
 
 set(VITA_IP "" CACHE STRING "PS Vita IP address for FTP/vitacompanion deploy")
 set(VITA_FTP_PORT "1337" CACHE STRING "PS Vita FTP port")
@@ -69,6 +69,7 @@ vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} eboot.bin
   VERSION ${VITA_VERSION}
   NAME ${VITA_APP_NAME}
   FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/icon0.png sce_sys/icon0.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/inter_atlas.png assets/fonts/inter_atlas.png
 )
 
 if(VITA_IP)
@@ -84,3 +85,12 @@ if(VITA_IP)
     COMMENT "Uploading eboot.bin to installed app ${VITA_TITLEID}"
   )
 endif()
+
+
+
+
+
+
+
+
+

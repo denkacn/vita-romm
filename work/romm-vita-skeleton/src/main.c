@@ -19,15 +19,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "font_atlas.h"
+
 #define APP_TITLE "Vita RomM"
 #define APP_TITLEID "ROMM00001"
 #ifndef ROMM_VITA_VERSION
-#define ROMM_VITA_VERSION "0.2.3"
+#define ROMM_VITA_VERSION "0.2.10"
 #endif
 #define CONFIG_DIR "ux0:data/vita-romm"
 #define CONFIG_PATH CONFIG_DIR "/config.txt"
 #define POSTER_CACHE_DIR CONFIG_DIR "/covers"
 #define DOWNLOAD_DIR CONFIG_DIR "/downloads"
+#define FONT_RENDERER_NAME "Inter bitmap atlas"
 #define HTTP_RESPONSE_MAX 131071
 #define MAX_ROMS 48
 #define MAX_REFRESH_TITLES 1024
@@ -42,7 +45,8 @@
 #define COLOR_MUTED RGBA8(156, 169, 184, 255)
 #define COLOR_GOOD RGBA8(105, 214, 132, 255)
 #define COLOR_WARN RGBA8(245, 174, 79, 255)
-#define UI_FONT_SCALE 1.22f
+#define UI_FONT_SCALE 1.0f
+#define UI_FONT_BASE_SIZE 32.0f
 #define VITA_FILE_MODE (SCE_S_IRUSR | SCE_S_IWUSR | SCE_S_IRSYS | SCE_S_IWSYS)
 #define VITA_DIR_MODE (SCE_S_IRWXU | SCE_S_IRWXS)
 
@@ -113,9 +117,13 @@ typedef struct {
 static char net_memory[1 * 1024 * 1024];
 static char http_response[HTTP_RESPONSE_MAX + 1];
 static char stats_response[HTTP_RESPONSE_MAX + 1];
-static vita2d_pgf *g_font = NULL;
+typedef struct {
+    vita2d_texture *atlas;
+} BitmapFont;
 
-static void draw_ui(vita2d_pgf *font, const AppState *state);
+static BitmapFont *g_font = NULL;
+
+static void draw_ui(BitmapFont *font, const AppState *state);
 static void update_rom_status(AppState *state, int index);
 
 typedef struct {
@@ -1929,20 +1937,53 @@ static void download_selected_rom(AppState *state) {
     state->busy = false;
 }
 
-static void draw_text(vita2d_pgf *font, int x, int y, float scale, unsigned int color, const char *text) {
-    vita2d_pgf_draw_text(font, x, y, color, scale * UI_FONT_SCALE, text);
+static int font_size_index(float scale) {
+    if (scale >= 1.5f) return 5;
+    if (scale >= 1.15f) return 4;
+    if (scale >= 1.0f) return 3;
+    if (scale >= 0.85f) return 2;
+    if (scale >= 0.72f) return 1;
+    return 0;
 }
 
-static void draw_top(vita2d_pgf *font, const AppState *state) {
+static void draw_text(BitmapFont *font, int x, int y, float scale, unsigned int color, const char *text) {
+    if (!font || !font->atlas || !text) return;
+    int size_index = font_size_index(scale);
+    float pen_x = (float)x;
+    int baseline_y = y;
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
+        if (*p == '\n') {
+            pen_x = (float)x;
+            baseline_y += FONT_ATLAS_SIZES[size_index].line_height;
+            continue;
+        }
+        unsigned char ch = *p;
+        if (ch < FONT_ATLAS_FIRST || ch >= FONT_ATLAS_FIRST + FONT_ATLAS_COUNT) ch = '?';
+        const BitmapGlyph *glyph = &FONT_ATLAS_GLYPHS[size_index][ch - FONT_ATLAS_FIRST];
+        if (ch != ' ') {
+            vita2d_draw_texture_tint_part(font->atlas,
+                pen_x + glyph->xoff,
+                (float)(baseline_y + glyph->yoff),
+                glyph->x,
+                glyph->y,
+                glyph->w,
+                glyph->h,
+                color);
+        }
+        pen_x += glyph->advance;
+    }
+}
+
+static void draw_top(BitmapFont *font, const AppState *state) {
     vita2d_draw_rectangle(0, 0, 960, 74, COLOR_BAR);
     vita2d_draw_rectangle(0, 72, 960, 2, COLOR_ACCENT);
     draw_text(font, 34, 48, 1.2f, COLOR_TEXT, APP_TITLE);
-    draw_text(font, 182, 47, 0.64f, COLOR_ACCENT, "v" ROMM_VITA_VERSION);
-    draw_text(font, 272, 47, 0.64f, COLOR_MUTED, state->network_status);
-    if (state->ip_address[0]) draw_text(font, 440, 47, 0.64f, COLOR_MUTED, state->ip_address);
+    draw_text(font, 228, 47, 0.64f, COLOR_ACCENT, "v" ROMM_VITA_VERSION);
+    draw_text(font, 326, 47, 0.64f, COLOR_MUTED, state->network_status);
+    if (state->ip_address[0]) draw_text(font, 510, 47, 0.64f, COLOR_MUTED, state->ip_address);
 }
 
-static void draw_loading(vita2d_pgf *font, const AppState *state) {
+static void draw_loading(BitmapFont *font, const AppState *state) {
     draw_text(font, 300, 230, 1.2f, COLOR_TEXT, "Loading RomM library");
     vita2d_draw_rectangle(300, 260, 360, 8, COLOR_CARD);
     vita2d_draw_rectangle(300, 260, state->busy ? 220 : 360, 8, COLOR_ACCENT);
@@ -1950,9 +1991,11 @@ static void draw_loading(vita2d_pgf *font, const AppState *state) {
     draw_text(font, 300, 334, 0.62f, COLOR_MUTED, state->detail);
 }
 
-static void draw_platforms(vita2d_pgf *font, const AppState *state) {
-    draw_text(font, 56, 112, 0.86f, COLOR_MUTED, "Choose platform");
-    draw_text(font, 782, 112, 0.62f, COLOR_MUTED, "Version " ROMM_VITA_VERSION);
+static void draw_platforms(BitmapFont *font, const AppState *state) {
+    vita2d_draw_rectangle(54, 82, 520, 34, RGBA8(186, 85, 211, 255));
+    draw_text(font, 66, 108, 0.72f, COLOR_BG, "BITMAP FONT TEST 0.2.10 Inter atlas");
+    draw_text(font, 56, 138, 0.86f, COLOR_MUTED, "Choose platform");
+    draw_text(font, 782, 138, 0.62f, COLOR_MUTED, "Version " ROMM_VITA_VERSION);
     for (int i = 0; i < PLATFORM_COUNT; i++) {
         int x = 88 + i * 420;
         unsigned int color = i == state->selected_platform ? COLOR_CARD_ACTIVE : COLOR_CARD;
@@ -1986,7 +2029,7 @@ static void draw_platforms(vita2d_pgf *font, const AppState *state) {
     draw_text(font, 58, 500, 0.68f, COLOR_MUTED, "Left/Right select, X open games");
 }
 
-static void draw_games(vita2d_pgf *font, const AppState *state) {
+static void draw_games(BitmapFont *font, const AppState *state) {
     PlatformDef *p = (PlatformDef *)&state->platforms[state->selected_platform];
     draw_text(font, 42, 108, 0.74f, COLOR_MUTED, p->label);
     if (state->rom_count <= 0) {
@@ -2020,7 +2063,7 @@ static void draw_games(vita2d_pgf *font, const AppState *state) {
     draw_text(font, 400, 414, 0.62f, COLOR_MUTED, state->detail);
 }
 
-static void draw_ui(vita2d_pgf *font, const AppState *state) {
+static void draw_ui(BitmapFont *font, const AppState *state) {
     vita2d_start_drawing();
     vita2d_clear_screen();
     vita2d_draw_rectangle(0, 0, 960, 544, COLOR_BG);
@@ -2044,10 +2087,16 @@ int main(void) {
 
     vita2d_init();
     vita2d_set_clear_color(COLOR_BG);
-    vita2d_pgf *font = vita2d_load_default_pgf();
-    g_font = font;
+    BitmapFont font;
+    memset(&font, 0, sizeof(font));
+    font.atlas = vita2d_load_PNG_file(FONT_ATLAS_PATH);
+    if (!font.atlas) {
+        sceKernelExitProcess(1);
+        return 1;
+    }
+    g_font = &font;
 
-    draw_ui(font, &state);
+    draw_ui(&font, &state);
     sceDisplayWaitVblankStart();
     load_platforms_and_roms(&state);
 
@@ -2065,11 +2114,11 @@ int main(void) {
                 state.selected_platform = 1 - state.selected_platform;
             }
             if (pressed & SCE_CTRL_CROSS) {
-                draw_ui(font, &state);
+                draw_ui(&font, &state);
                 load_games(&state, state.selected_platform);
             }
             if (pressed & SCE_CTRL_TRIANGLE) {
-                draw_ui(font, &state);
+                draw_ui(&font, &state);
                 refresh_livearea_from_main(&state);
             }
         } else if (!state.busy && state.view == VIEW_GAMES) {
@@ -2082,7 +2131,7 @@ int main(void) {
                 load_current_cover(&state);
             }
             if (pressed & SCE_CTRL_CROSS) {
-                draw_ui(font, &state);
+                draw_ui(&font, &state);
                 download_selected_rom(&state);
             }
             if (pressed & SCE_CTRL_CIRCLE) {
@@ -2092,17 +2141,26 @@ int main(void) {
             }
         }
 
-        draw_ui(font, &state);
+        draw_ui(&font, &state);
         sceDisplayWaitVblankStart();
     }
 
     for (int i = 0; i < state.rom_count; i++) {
         if (state.roms[i].cover) vita2d_free_texture(state.roms[i].cover);
     }
-    vita2d_free_pgf(font);
+    if (font.atlas) vita2d_free_texture(font.atlas);
     g_font = NULL;
     vita2d_fini();
     curl_global_cleanup();
     sceKernelExitProcess(0);
     return 0;
 }
+
+
+
+
+
+
+
+
+
