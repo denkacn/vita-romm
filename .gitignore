@@ -1,0 +1,47 @@
+# Build outputs
+outputs/
+*.vpk
+*_eboot.bin
+eboot.bin
+*.self
+*.elf
+*.sfo
+
+# Local config and secrets
+config.txt
+*.local
+*.secret
+.env
+.env.*
+
+# CMake / VitaSDK build trees
+build/
+**/build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Logs and generated diagnostics
+*.log
+build-err.log
+build-out.log
+build-exit.log
+*-grep.log
+*-check.log
+
+# Temporary/generated helper artifacts
+*.tmp
+*.temp
+*.bak
+*.part
+.DS_Store
+Thumbs.db
+
+# Local editor state
+.vscode/
+.idea/
+
+# Large design/source-only scratch files
+work/playnite.psd
