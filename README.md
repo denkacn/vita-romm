@@ -1,93 +1,379 @@
-# VitaRomm
+# Vita RomM
 
+Vita RomM is a PS Vita homebrew client for browsing a self-hosted [RomM](https://github.com/rommapp/romm) library and installing owned PS Vita and PSP backups directly on a modded PlayStation Vita.
 
+The app is built for a personal homebrew workflow: open Vita RomM, choose a platform, browse games with cover art, download/install a selected title, and refresh LiveArea for installed Vita games.
 
-## Getting started
+## Disclaimer
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+This project is provided for educational, research, preservation, and personal backup purposes only.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+Vita RomM does not include, host, distribute, decrypt, bypass, or provide any copyrighted games, firmware, keys, licenses, tickets, or other proprietary Sony Interactive Entertainment material. It is only a client that talks to a RomM server that you configure yourself.
 
-## Add your files
+You are responsible for complying with all laws in your country and for using this software only with content that you legally own and are allowed to back up. Do not use this project to download, install, share, or distribute copyrighted content without permission.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+PlayStation, PS Vita, PSP, LiveArea, and related names are trademarks or registered trademarks of Sony Interactive Entertainment Inc. This project is independent homebrew software and is not affiliated with, endorsed by, sponsored by, or approved by Sony Interactive Entertainment.
 
+## Features
+
+- RomM server connection using `server_url` and `api_token`.
+- Platform picker with PS Vita and PSP support.
+- Game browser with cover/poster cache.
+- Full game list overlay for quick selection.
+- Download progress while fetching game files.
+- ZIP extraction/install flow for PS Vita packages.
+- PSP ISO/CSO/PBP install flow.
+- Downloaded/installed status badges.
+- Manual Refresh LiveArea action from the main screen.
+- Optional experimental automatic LiveArea refresh after Vita installs.
+- App data, downloads, covers, logs, and config stored under `ux0:data/vita-romm` by default.
+
+## Supported Platforms
+
+Currently supported:
+
+- PlayStation Vita
+- PlayStation Portable
+
+Planned/possible future platforms:
+
+- PlayStation / PSX
+- NES
+- SNES
+- Other systems that can be emulated on PS Vita
+
+Only PS Vita and PSP are enabled in the current client build.
+
+## Requirements
+
+On the PS Vita:
+
+- A homebrew-enabled PS Vita or PSTV.
+- VitaShell installed.
+- Network access to your RomM server.
+- Enough free space on `ux0:` for downloads and installed games.
+- Adrenaline installed if you want to play PSP games.
+
+On the server side:
+
+- A working RomM instance.
+- A RomM API token.
+- RomM platforms mapped for `psvita` and `psp` folders.
+- Your own legally backed up game files in RomM.
+
+## Installing The VPK
+
+1. Copy `vita_romm.vpk` to your PS Vita.
+
+   Common location:
+
+   ```text
+   ux0:data/vita_romm.vpk
+   ```
+
+2. Open VitaShell.
+3. Navigate to the copied VPK.
+4. Press `X` to install it.
+5. Launch `Vita RomM` from LiveArea.
+
+The app Title ID is:
+
+```text
+ROMM00001
 ```
-cd existing_repo
-git remote add origin https://gitlab.bypuziki.com/software/vita-romm.git
-git branch -M main
-git push -uf origin main
+
+Updating the app with a newer VPK should update the same bubble.
+
+## Configuration File
+
+Vita RomM reads its config from:
+
+```text
+ux0:data/vita-romm/config.txt
 ```
 
-## Integrate with your tools
+If the file does not exist, the app creates a default one on first launch. After the first launch, edit it in VitaShell or copy your prepared config to that path.
 
-* [Set up project integrations](https://gitlab.bypuziki.com/software/vita-romm/-/settings/integrations)
+### Minimal Config
 
-## Collaborate with your team
+```text
+server_url=http://your-romm-server.local/
+api_token=rmm_your_token_here
+```
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+For local/private networks, plain HTTP is usually easier on Vita than HTTPS because old Vita SSL/CA handling can be painful. HTTPS may work if your setup and certificates are compatible, but HTTP on a trusted LAN is the simplest path.
 
-## Test and Deploy
+### Full Config Example
 
-Use the built-in continuous integration in GitLab.
+```text
+server_url=http://your-romm-server.local/
+api_token=rmm_your_token_here
+psvita_download_dir=ux0:data/vita-romm/downloads/psvita
+psvita_app_dir=ux0:app
+psvita_patch_dir=ux0:patch
+psvita_repatch_dir=ux0:rePatch
+psvita_addcont_dir=ux0:addcont
+psvita_license_dir=ux0:license
+psp_install_dir=ux0:pspemu/ISO
+psp_game_dir=ux0:pspemu/PSP/GAME
+psp_download_dir=ux0:data/vita-romm/downloads/psp
+auto_refresh_livearea=0
+```
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+Do not commit your real `api_token` to a public repository.
 
-***
+## Config Keys
 
-# Editing this README
+| Key | Description |
+| --- | --- |
+| `server_url` | Base URL of your RomM server. Example: `http://192.168.0.10:8080/` |
+| `api_token` | RomM API token. Usually starts with `rmm_`. |
+| `psvita_download_dir` | Where PS Vita archives are downloaded before extraction. |
+| `psvita_app_dir` | Target directory for Vita `app/<TITLEID>` content. Usually `ux0:app`. |
+| `psvita_patch_dir` | Target directory for Vita `patch/<TITLEID>` content. Usually `ux0:patch`. |
+| `psvita_repatch_dir` | Target directory for Vita `rePatch/<TITLEID>` content. Usually `ux0:rePatch`. |
+| `psvita_addcont_dir` | Target directory for Vita DLC/addcont content. Usually `ux0:addcont`. |
+| `psvita_license_dir` | Target directory for Vita licenses. Usually `ux0:license`. |
+| `psp_install_dir` | Target directory for PSP `.iso` and `.cso` files. Usually `ux0:pspemu/ISO`. |
+| `psp_game_dir` | Target directory for PSP homebrew/PSN-style `EBOOT.PBP` games. Usually `ux0:pspemu/PSP/GAME`. |
+| `psp_download_dir` | Where PSP ZIP or temporary downloads are stored. |
+| `auto_refresh_livearea` | `0` disables automatic LiveArea refresh. `1` enables experimental automatic refresh. |
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## RomM Folder / Platform Setup
 
-## Suggestions for a good README
+The current client expects RomM platforms for:
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+```text
+psvita
+psp
+```
 
-## Name
-Choose a self-explaining name for your project.
+Your exact folder names on the RomM server can be different, but they must be mapped in RomM to the correct platform:
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+- `psvita` should map to PlayStation Vita.
+- `psp` should map to PlayStation Portable.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+The app reads the RomM platform IDs from the API and then uses those IDs to fetch counts and game lists.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+## PS Vita Install Formats
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Vita RomM supports Vita ZIP archives that contain Vita game folders such as:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```text
+app/PCSB00079/eboot.bin
+patch/PCSB00079/...
+rePatch/PCSB00079/...
+addcont/PCSB00079/...
+license/...
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+It also handles archives that have one extra root folder before the Vita layout, for example:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```text
+Super Meat Boy/app/PCSE00769/eboot.bin
+Super Meat Boy/patch/PCSE00769/...
+Super Meat Boy/repatch/PCSE00769/...
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+During install, files are extracted to the configured Vita directories:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```text
+ux0:app
+ux0:patch
+ux0:rePatch
+ux0:addcont
+ux0:license
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+After installing a Vita game, run Refresh LiveArea from Vita RomM or VitaShell so the game bubble appears.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+## PSP Install Formats
 
-## License
-For open source projects, say how it is licensed.
+PSP games are installed for Adrenaline.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Supported direct files:
+
+```text
+.iso
+.cso
+.pbp
+```
+
+Default install paths:
+
+```text
+ux0:pspemu/ISO
+ux0:pspemu/PSP/GAME
+```
+
+Expected behavior:
+
+- `.iso` and `.cso` files are copied to `psp_install_dir`.
+- `.pbp` files are installed as `psp_game_dir/<game-folder>/EBOOT.PBP`.
+- ZIP archives are scanned for `.iso`, `.cso`, or `EBOOT.PBP` and extracted to the matching PSP location.
+
+Adrenaline is responsible for showing and running PSP content. Vita RomM only places the files in the configured PSP/Adrenaline folders.
+
+## Cover Art
+
+The app downloads cover/poster images exposed by RomM and caches them on the Vita under:
+
+```text
+ux0:data/vita-romm/covers
+```
+
+If a cover does not show:
+
+- Make sure the cover exists in RomM.
+- Make sure the Vita can access the RomM server URL.
+- Try HTTP if HTTPS/certificates are causing problems.
+- Delete the cached cover file and reopen the game if you suspect a bad cached download.
+
+## LiveArea Refresh
+
+Vita RomM has a manual Refresh LiveArea button on the platform screen.
+
+Recommended workflow:
+
+1. Install/download a Vita game.
+2. Return to the platform screen.
+3. Press `Triangle` to run Refresh LiveArea.
+4. Wait for the progress to finish.
+5. Return to LiveArea and check for the new bubble.
+
+If the built-in refresh fails, open VitaShell and use its Refresh LiveArea option.
+
+The `auto_refresh_livearea=1` setting enables an experimental automatic refresh after install. Keep it disabled if you prefer the safer manual flow.
+
+## Controls
+
+Platform screen:
+
+| Button | Action |
+| --- | --- |
+| Left / Right | Select platform |
+| X | Open selected platform |
+| Triangle | Refresh LiveArea |
+
+Game screen:
+
+| Button | Action |
+| --- | --- |
+| Left / Right | Browse games |
+| Square | Open full game list |
+| X | Download/install selected game |
+| O | Back to platform screen |
+
+Game list:
+
+| Button | Action |
+| --- | --- |
+| Up / Down | Move selection |
+| X | Select game and return to game screen |
+| O | Close list |
+| Square | Close list |
+
+## App Data Layout
+
+Default data directory:
+
+```text
+ux0:data/vita-romm
+```
+
+Common files and folders:
+
+```text
+ux0:data/vita-romm/config.txt
+ux0:data/vita-romm/install.log
+ux0:data/vita-romm/covers/
+ux0:data/vita-romm/downloads/psvita/
+ux0:data/vita-romm/downloads/psp/
+```
+
+## Build From Source
+
+This project is built with VitaSDK.
+
+Expected development setup:
+
+- Windows host.
+- WSL2 with VitaSDK installed.
+- CMake.
+- VitaSDK libraries used by the app: `vita2d`, `libcurl`, `libzip`, PNG/JPEG/zlib-related dependencies.
+
+Build from Windows PowerShell:
+
+```powershell
+D:\MyProjects\Software\vita-romm\work\build-romm-vita.ps1
+```
+
+Build outputs:
+
+```text
+D:\MyProjects\Software\vita-romm\outputs\vita_romm.vpk
+D:\MyProjects\Software\vita-romm\outputs\vita_romm_eboot.bin
+```
+
+Direct WSL build from the app source folder:
+
+```bash
+cd /mnt/d/MyProjects/Software/vita-romm/work/romm-vita-skeleton
+./scripts/build.sh
+```
+
+## Deploy During Development
+
+The simplest install path is VitaShell FTP:
+
+1. Open VitaShell on the Vita.
+2. Press `SELECT` to start FTP.
+3. Copy the VPK to `ux0:data/`.
+4. Install the VPK from VitaShell.
+
+After the VPK is installed once, development can be faster by replacing only:
+
+```text
+ux0:app/ROMM00001/eboot.bin
+```
+
+Then relaunch the app bubble.
+
+## Troubleshooting
+
+### App cannot connect to RomM
+
+- Check `server_url` in `ux0:data/vita-romm/config.txt`.
+- Make sure the URL is reachable from the Vita browser or another device on the same network.
+- Prefer HTTP on a trusted LAN if HTTPS certificate validation causes trouble.
+- Check that `api_token` is valid.
+
+### Games list is empty
+
+- Confirm the RomM platforms are mapped to PS Vita and PSP.
+- Confirm the platform has games in RomM.
+- Confirm the token has access to the RomM API.
+
+### Covers do not appear
+
+- Check if covers appear in the RomM web UI.
+- Check network access from Vita to RomM.
+- Delete cached covers in `ux0:data/vita-romm/covers` and try again.
+
+### Vita game installed but no bubble appears
+
+- Run Refresh LiveArea from Vita RomM.
+- If that fails, run Refresh LiveArea from VitaShell.
+- Confirm the game was extracted under `ux0:app/<TITLEID>` and contains `eboot.bin`.
+
+### PSP game does not appear in Adrenaline
+
+- Confirm Adrenaline is installed and configured.
+- ISO/CSO files should be under `ux0:pspemu/ISO`.
+- EBOOT.PBP games should be under `ux0:pspemu/PSP/GAME/<folder>/EBOOT.PBP`.
+
+## Project Status
+
+Current version: `0.4.0`.
+
+The app currently focuses on PS Vita and PSP installation workflows. The UI and platform list are expected to evolve as more emulated platforms are added.
