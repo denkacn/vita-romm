@@ -4,6 +4,7 @@
 #include <psp2/io/fcntl.h>
 #include <psp2/io/stat.h>
 #include <psp2/kernel/processmgr.h>
+#include <psp2/kernel/threadmgr.h>
 #include <psp2/net/net.h>
 #include <psp2/net/netctl.h>
 #include <psp2/promoterutil.h>
@@ -24,7 +25,7 @@
 #define APP_TITLE "Vita RomM"
 #define APP_TITLEID "ROMM00001"
 #ifndef ROMM_VITA_VERSION
-#define ROMM_VITA_VERSION "0.3.0"
+#define ROMM_VITA_VERSION "0.4.0"
 #endif
 #define CONFIG_DIR "ux0:data/vita-romm"
 #define CONFIG_PATH CONFIG_DIR "/config.txt"
@@ -53,7 +54,8 @@
 typedef enum {
     VIEW_LOADING,
     VIEW_PLATFORMS,
-    VIEW_GAMES
+    VIEW_GAMES,
+    VIEW_GAME_LIST
 } ViewMode;
 
 typedef struct {
@@ -122,6 +124,8 @@ typedef struct {
 } BitmapFont;
 
 static BitmapFont *g_font = NULL;
+static vita2d_texture *g_logo_texture = NULL;
+static vita2d_texture *g_platform_textures[PLATFORM_COUNT] = { NULL };
 
 static void draw_ui(BitmapFont *font, const AppState *state);
 static void update_rom_status(AppState *state, int index);
@@ -131,6 +135,17 @@ typedef struct {
     AppState *state;
     curl_off_t last_drawn;
 } DownloadContext;
+
+
+
+
+
+
+
+
+
+
+
 
 
 

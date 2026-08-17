@@ -30,9 +30,13 @@ int main(void) {
         return 1;
     }
     g_font = &font;
+    g_logo_texture = vita2d_load_PNG_file("app0:sce_sys/icon0.png");
+    g_platform_textures[0] = vita2d_load_PNG_file("app0:assets/platforms/platform_psvita.png");
+    g_platform_textures[1] = vita2d_load_PNG_file("app0:assets/platforms/platform_psp.png");
 
     draw_ui(&font, &state);
     sceDisplayWaitVblankStart();
+    sceKernelDelayThread(3000000);
     load_platforms_and_roms(&state);
 
     SceCtrlData pad;
@@ -46,7 +50,8 @@ int main(void) {
 
         if (!state.busy && state.view == VIEW_PLATFORMS) {
             if (pressed & (SCE_CTRL_LEFT | SCE_CTRL_RIGHT)) {
-                state.selected_platform = 1 - state.selected_platform;
+                if (pressed & SCE_CTRL_LEFT) state.selected_platform = (state.selected_platform + PLATFORM_COUNT - 1) % PLATFORM_COUNT;
+                if (pressed & SCE_CTRL_RIGHT) state.selected_platform = (state.selected_platform + 1) % PLATFORM_COUNT;
             }
             if (pressed & SCE_CTRL_CROSS) {
                 draw_ui(&font, &state);
@@ -69,10 +74,28 @@ int main(void) {
                 draw_ui(&font, &state);
                 download_selected_rom(&state);
             }
+            if (pressed & SCE_CTRL_SQUARE) {
+                state.view = VIEW_GAME_LIST;
+            }
             if (pressed & SCE_CTRL_CIRCLE) {
                 state.view = VIEW_PLATFORMS;
-                snprintf(state.status, sizeof(state.status), "Ready");
+                state.status[0] = '\0';
                 snprintf(state.detail, sizeof(state.detail), "Choose platform");
+            }
+        } else if (!state.busy && state.view == VIEW_GAME_LIST) {
+            if ((pressed & SCE_CTRL_UP) && state.rom_count > 0) {
+                state.selected_rom = (state.selected_rom + state.rom_count - 1) % state.rom_count;
+            }
+            if ((pressed & SCE_CTRL_DOWN) && state.rom_count > 0) {
+                state.selected_rom = (state.selected_rom + 1) % state.rom_count;
+            }
+            if ((pressed & SCE_CTRL_CROSS) && state.rom_count > 0) {
+                state.view = VIEW_GAMES;
+                load_current_cover(&state);
+            }
+            if (pressed & (SCE_CTRL_CIRCLE | SCE_CTRL_SQUARE)) {
+                state.view = VIEW_GAMES;
+                load_current_cover(&state);
             }
         }
 
@@ -83,6 +106,10 @@ int main(void) {
     for (int i = 0; i < state.rom_count; i++) {
         if (state.roms[i].cover) vita2d_free_texture(state.roms[i].cover);
     }
+    for (int i = 0; i < PLATFORM_COUNT; i++) {
+        if (g_platform_textures[i]) vita2d_free_texture(g_platform_textures[i]);
+    }
+    if (g_logo_texture) vita2d_free_texture(g_logo_texture);
     if (font.atlas) vita2d_free_texture(font.atlas);
     g_font = NULL;
     vita2d_fini();
@@ -90,6 +117,10 @@ int main(void) {
     sceKernelExitProcess(0);
     return 0;
 }
+
+
+
+
 
 
 
