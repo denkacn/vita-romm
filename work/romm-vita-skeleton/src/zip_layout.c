@@ -1,3 +1,6 @@
+#include "zip_layout.h"
+#include "util.h"
+
 static bool zip_entry_payload(const char *entry, const char *marker, const char **payload) {
     size_t marker_len = strlen(marker);
     if (starts_with(entry, marker)) {
@@ -52,7 +55,7 @@ static int read_zip_entry(zip_t *archive, zip_uint64_t index, unsigned char *buf
     return n < 0 ? -1 : (int)n;
 }
 
-static bool find_vita_zip_hint(zip_t *archive, VitaZipHint *hint) {
+bool find_vita_zip_hint(zip_t *archive, VitaZipHint *hint) {
     memset(hint, 0, sizeof(*hint));
     zip_int64_t count = zip_get_num_entries(archive, 0);
     if (count < 0) return false;
@@ -92,7 +95,7 @@ static bool extract_title_id_from_payload(const char *payload, char *dst, size_t
     return true;
 }
 
-static void make_folder_name_from_file(const char *file, char *dst, size_t dst_size) {
+void make_folder_name_from_file(const char *file, char *dst, size_t dst_size) {
     snprintf(dst, dst_size, "%s", basename_ptr(file));
     char *dot = strrchr(dst, '.');
     if (dot) *dot = '\0';
@@ -114,7 +117,7 @@ static void psp_folder_from_root(const char *root, char *dst, size_t dst_size) {
     sanitize_filename(dst);
 }
 
-static bool find_psp_zip_hint(zip_t *archive, PspZipHint *hint) {
+bool find_psp_zip_hint(zip_t *archive, PspZipHint *hint) {
     memset(hint, 0, sizeof(*hint));
     zip_int64_t count = zip_get_num_entries(archive, 0);
     if (count < 0) return false;
@@ -145,7 +148,7 @@ static bool find_psp_zip_hint(zip_t *archive, PspZipHint *hint) {
     return false;
 }
 
-static bool get_vita_title_id_for_entry(const char *entry_name, const VitaZipHint *hint, char *dst, size_t dst_size) {
+bool get_vita_title_id_for_entry(const char *entry_name, const VitaZipHint *hint, char *dst, size_t dst_size) {
     char entry[320];
     snprintf(entry, sizeof(entry), "%s", entry_name);
     for (char *p = entry; *p; p++) {
@@ -164,8 +167,8 @@ static bool get_vita_title_id_for_entry(const char *entry_name, const VitaZipHin
     return false;
 }
 
-static bool map_zip_entry_to_install_path(const AppState *state, int platform_index, const char *entry_name, const VitaZipHint *hint, const PspZipHint *psp_hint, char *dst, size_t dst_size) {
-    const PlatformDef *platform = &state->platforms[platform_index];
+bool map_zip_entry_to_install_path(const AppState *state, int platform_index, const char *entry_name, const VitaZipHint *hint, const PspZipHint *psp_hint, char *dst, size_t dst_size) {
+    const PlatformDef *platform = &state->catalog.platforms[platform_index];
     char entry[320];
     snprintf(entry, sizeof(entry), "%s", entry_name);
     for (char *p = entry; *p; p++) {
@@ -178,7 +181,7 @@ static bool map_zip_entry_to_install_path(const AppState *state, int platform_in
     if (platform->install_mode == INSTALL_ADRENALINE_PSP || platform->install_mode == INSTALL_PSX) {
         if (ends_with_ci(entry, ".iso") || ends_with_ci(entry, ".cso")) {
             char file[180];
-            snprintf(file, sizeof(file), "%s", basename_ptr(entry));
+            copy_value(file, sizeof(file), basename_ptr(entry));
             sanitize_filename(file);
             snprintf(dst, dst_size, "%s/%s", state->psp_install_dir, file);
             return true;
@@ -203,7 +206,7 @@ static bool map_zip_entry_to_install_path(const AppState *state, int platform_in
         }
         if (platform->install_mode == INSTALL_PSX && (ends_with_ci(entry, ".cue") || ends_with_ci(entry, ".bin"))) {
             char file[180];
-            snprintf(file, sizeof(file), "%s", basename_ptr(entry));
+            copy_value(file, sizeof(file), basename_ptr(entry));
             sanitize_filename(file);
             snprintf(dst, dst_size, "%s/%s", platform->path, file);
             return true;

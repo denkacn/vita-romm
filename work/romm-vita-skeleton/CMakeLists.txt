@@ -15,7 +15,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Vita RomM")
 set(VITA_TITLEID "ROMM00001")
 set(VITA_VERSION "01.00")
-set(ROMM_VITA_VERSION "0.5.33")
+set(ROMM_VITA_VERSION "0.5.38")
 
 set(VITA_IP "" CACHE STRING "PS Vita IP address for FTP/vitacompanion deploy")
 set(VITA_FTP_PORT "1337" CACHE STRING "PS Vita FTP port")
@@ -24,6 +24,40 @@ find_package(CURL REQUIRED)
 
 add_executable(${PROJECT_NAME}
   src/main.c
+  src/app.c
+  src/app_error.c
+  src/app_state.c
+  src/commands.c
+  src/config.c
+  src/http_buffer.c
+  src/input.c
+  src/platforms.c
+  src/vita_fs.c
+  src/vita_paths.c
+  src/installer.c
+  src/installer_download.c
+  src/installer_psx.c
+  src/installer_zip.c
+  src/install_status.c
+  src/json_utils.c
+  src/job_queue.c
+  src/romm_parse_files.c
+  src/romm_parse_platforms.c
+  src/romm_parse_roms.c
+  src/library_loader.c
+  src/livearea.c
+  src/net.c
+  src/romm_client.c
+  src/rom_paths.c
+  src/cover_cache.c
+  src/ui.c
+  src/ui_resources.c
+  src/ui_games.c
+  src/ui_platforms.c
+  src/ui_shell.c
+  src/ui_font.c
+  src/util.c
+  src/zip_layout.c
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE

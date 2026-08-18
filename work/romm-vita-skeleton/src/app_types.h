@@ -1,3 +1,6 @@
+#ifndef VITA_ROMM_APP_TYPES_H
+#define VITA_ROMM_APP_TYPES_H
+
 #include <psp2/ctrl.h>
 #include <psp2/display.h>
 #include <psp2/io/dirent.h>
@@ -25,7 +28,7 @@
 #define APP_TITLE "Vita RomM"
 #define APP_TITLEID "ROMM00001"
 #ifndef ROMM_VITA_VERSION
-#define ROMM_VITA_VERSION "0.5.33"
+#define ROMM_VITA_VERSION "0.5.38"
 #endif
 #define CONFIG_DIR "ux0:data/vita-romm"
 #define CONFIG_PATH CONFIG_DIR "/config.txt"
@@ -62,28 +65,6 @@ typedef enum {
     VIEW_GAME_LIST
 } ViewMode;
 
-typedef struct {
-    char label[96];
-    char slug[40];
-    char path[160];
-    char icon_path[128];
-    int id;
-    int ids[MAX_PLATFORM_IDS];
-    int id_count;
-    int rom_count;
-    int install_mode;
-    int support_level;
-    int icon_index;
-    bool path_configured;
-    bool known;
-    vita2d_texture *icon;
-} PlatformDef;
-
-typedef struct {
-    char slug[40];
-    char path[160];
-} PlatformPathConfig;
-
 typedef enum {
     INSTALL_VITA = 0,
     INSTALL_ADRENALINE_PSP,
@@ -113,8 +94,30 @@ typedef enum {
 } PlatformIconIndex;
 
 typedef struct {
+    char label[96];
+    char slug[40];
+    char path[160];
+    char icon_path[160];
     int id;
-    char name[320];
+    int ids[MAX_PLATFORM_IDS];
+    int id_count;
+    int rom_count;
+    int install_mode;
+    int support_level;
+    int icon_index;
+    bool path_configured;
+    bool known;
+    vita2d_texture *icon;
+} PlatformDef;
+
+typedef struct {
+    char slug[40];
+    char path[160];
+} PlatformPathConfig;
+
+typedef struct {
+    int id;
+    char name[384];
     char url[360];
     long long size_bytes;
 } RomFileItem;
@@ -122,9 +125,9 @@ typedef struct {
 typedef struct {
     int id;
     char name[160];
-    char file_name[160];
+    char file_name[192];
     char cover_url[320];
-    char cover_path[128];
+    char cover_path[160];
     long long size_bytes;
     vita2d_texture *cover;
     bool is_downloaded;
@@ -132,6 +135,84 @@ typedef struct {
 } RomItem;
 
 typedef struct {
+    PlatformDef platforms[MAX_PLATFORMS];
+    int count;
+    int selected;
+} PlatformCatalog;
+
+typedef struct {
+    RomItem roms[MAX_ROMS];
+    int count;
+    int selected;
+    bool loading;
+    bool loading_more;
+    char error[160];
+} LibraryState;
+
+typedef struct {
+    int platform_index;
+    int rom_index;
+    char source_url[640];
+    char destination[384];
+    int current_file;
+    int total_files;
+} DownloadJob;
+
+typedef struct {
+    int generation;
+    int rom_id;
+    char cover_url[320];
+    char cache_path[160];
+} CoverJob;
+
+typedef struct {
+    int installed;
+    int matched;
+    int skipped;
+    char title_id[16];
+    char message[160];
+} InstallResult;
+
+typedef struct {
+    char root[180];
+    char title_id[16];
+} VitaZipHint;
+
+typedef struct {
+    char root[180];
+    char folder[80];
+} PspZipHint;
+
+typedef struct AppState AppState;
+
+typedef struct {
+    AppState *state;
+} RommClient;
+
+typedef struct {
+    int platform;
+    int id_index;
+    int offset;
+    int page_size;
+    int generation;
+    SceUID thread;
+    SceUID lock;
+    bool running;
+    bool loading_more;
+} LibraryWorkerState;
+
+typedef struct {
+    int generation;
+    SceUID thread;
+    bool running;
+} CoverWorkerState;
+
+typedef struct {
+    int current;
+    int total;
+} ProgressState;
+
+struct AppState {
     char server_url[256];
     char api_token[256];
     char vita_install_dir[160];
@@ -147,57 +228,26 @@ typedef struct {
     char psx_pbp_dir[160];
     PlatformPathConfig platform_paths[MAX_PLATFORM_PATHS];
     int platform_path_count;
+
     char status[256];
     char detail[256];
     char network_status[96];
     char ip_address[64];
-    PlatformDef platforms[MAX_PLATFORMS];
-    int platform_count;
-    RomItem roms[MAX_ROMS];
-    int rom_count;
-    int selected_platform;
-    int selected_rom;
-    int games_loading_platform;
-    int games_loading_id_index;
-    int games_loading_offset;
-    int games_loading_page_size;
-    bool games_loading_more;
-    int games_worker_generation;
-    SceUID games_worker_thread;
-    SceUID games_lock;
-    bool games_worker_running;
-    int cover_worker_generation;
-    SceUID cover_worker_thread;
-    bool cover_worker_running;
-    int progress_current;
-    int progress_total;
+
+    PlatformCatalog catalog;
+    LibraryState library;
+    LibraryWorkerState library_worker;
+    CoverWorkerState cover_worker;
+    ProgressState progress;
+
     ViewMode view;
     bool auto_refresh_livearea;
     bool busy;
-} AppState;
+};
 
-typedef struct {
-    char root[180];
-    char title_id[16];
-} VitaZipHint;
-
-typedef struct {
-    char root[180];
-    char folder[80];
-} PspZipHint;
-
-static char net_memory[1 * 1024 * 1024];
-static char http_response[HTTP_RESPONSE_MAX + 1];
 typedef struct {
     vita2d_texture *atlas;
 } BitmapFont;
-
-static BitmapFont *g_font = NULL;
-static vita2d_texture *g_logo_texture = NULL;
-static vita2d_texture *g_platform_textures[BUILTIN_PLATFORM_ICON_COUNT] = { NULL };
-
-static void draw_ui(BitmapFont *font, const AppState *state);
-static void update_rom_status(AppState *state, int index);
 
 typedef struct {
     SceUID fd;
@@ -205,17 +255,4 @@ typedef struct {
     curl_off_t last_drawn;
 } DownloadContext;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#endif

@@ -457,6 +457,6 @@ Then relaunch the app bubble.
 
 ## Project Status
 
-Current version: `0.5.33`.
+Current version: `0.5.38`.
 
 The app currently focuses on PS Vita and PSP installation workflows. The UI and platform list are expected to evolve as more emulated platforms are added.

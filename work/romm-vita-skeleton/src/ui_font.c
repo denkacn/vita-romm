@@ -1,4 +1,6 @@
-static int font_size_index(float scale) {
+#include "ui.h"
+
+int font_size_index(float scale) {
     if (scale >= 1.5f) return 5;
     if (scale >= 1.15f) return 4;
     if (scale >= 1.0f) return 3;
@@ -7,7 +9,7 @@ static int font_size_index(float scale) {
     return 0;
 }
 
-static void draw_text(BitmapFont *font, int x, int y, float scale, unsigned int color, const char *text) {
+void draw_text(BitmapFont *font, int x, int y, float scale, unsigned int color, const char *text) {
     if (!font || !font->atlas || !text) return;
     int size_index = font_size_index(scale);
     float pen_x = (float)x;

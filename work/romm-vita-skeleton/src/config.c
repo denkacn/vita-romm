@@ -1,4 +1,7 @@
-static void url_encode(char *dst, size_t dst_size, const char *src) {
+#include "config.h"
+#include "util.h"
+
+void url_encode(char *dst, size_t dst_size, const char *src) {
     static const char hex[] = "0123456789ABCDEF";
     size_t out = 0;
     for (const unsigned char *p = (const unsigned char *)src; *p && out + 4 < dst_size; p++) {
@@ -41,7 +44,7 @@ static void mkdirs(void) {
     sceIoMkdir(CONFIG_DIR "/roms/n64", VITA_DIR_MODE);
 }
 
-static void set_platform_path(AppState *state, const char *slug, const char *path) {
+void set_platform_path(AppState *state, const char *slug, const char *path) {
     if (!slug || !slug[0] || !path || !path[0]) return;
     for (int i = 0; i < state->platform_path_count; i++) {
         if (strcmp(state->platform_paths[i].slug, slug) == 0) {
@@ -56,7 +59,7 @@ static void set_platform_path(AppState *state, const char *slug, const char *pat
     copy_value(cfg->path, sizeof(cfg->path), path);
 }
 
-static const char *get_platform_path_config(const AppState *state, const char *slug) {
+const char *get_platform_path_config(const AppState *state, const char *slug) {
     for (int i = 0; i < state->platform_path_count; i++) {
         if (strcmp(state->platform_paths[i].slug, slug) == 0 && state->platform_paths[i].path[0]) {
             return state->platform_paths[i].path;
@@ -76,123 +79,12 @@ static void add_default_platform_paths(AppState *state) {
     set_platform_path(state, "n64", CONFIG_DIR "/roms/n64");
 }
 
-static bool slug_matches(const char *slug, const char *value) {
-    return strcmp(slug, value) == 0;
-}
-
-static bool slug_is_psvita(const char *slug, const char *label) {
-    return slug_matches(slug, "psvita") || slug_matches(slug, "vita") || strstr(label, "vita");
-}
-
-static bool slug_is_psp(const char *slug, const char *label) {
-    return slug_matches(slug, "psp") || strstr(label, "portable");
-}
-
-static bool slug_is_psx(const char *slug, const char *label) {
-    return slug_matches(slug, "psx") || slug_matches(slug, "ps1") || slug_matches(slug, "playstation") ||
-        strcmp(label, "playstation") == 0 || strstr(label, "playstation 1") || strstr(label, "ps1");
-}
-
-static bool slug_is_snes(const char *slug, const char *label) {
-    return slug_matches(slug, "snes") || slug_matches(slug, "super-nintendo") ||
-        slug_matches(slug, "super-nintendo-entertainment-system") || strstr(label, "super nintendo");
-}
-
-static void configure_platform(AppState *state, PlatformDef *p) {
-    char label_l[96];
-    snprintf(label_l, sizeof(label_l), "%s", p->label);
-    lowercase_ascii(label_l);
-
-    p->install_mode = INSTALL_FOLDER;
-    p->support_level = SUPPORT_PATH_REQUIRED;
-    p->icon_index = ICON_FALLBACK;
-    p->known = false;
-    p->path_configured = false;
-    p->path[0] = '\0';
-
-    if (slug_is_psvita(p->slug, label_l)) {
-        snprintf(p->slug, sizeof(p->slug), "psvita");
-        snprintf(p->label, sizeof(p->label), "PS Vita");
-        snprintf(p->path, sizeof(p->path), "%s", state->vita_download_dir);
-        p->install_mode = INSTALL_VITA;
-        p->support_level = SUPPORT_MANAGED;
-        p->icon_index = ICON_PSVITA;
-        p->path_configured = true;
-        p->known = true;
-        return;
-    }
-
-    if (slug_is_psp(p->slug, label_l)) {
-        snprintf(p->slug, sizeof(p->slug), "psp");
-        snprintf(p->label, sizeof(p->label), "PSP");
-        snprintf(p->path, sizeof(p->path), "%s", state->psp_install_dir);
-        p->install_mode = INSTALL_ADRENALINE_PSP;
-        p->support_level = SUPPORT_MANAGED;
-        p->icon_index = ICON_PSP;
-        p->path_configured = true;
-        p->known = true;
-        return;
-    }
-
-    if (slug_is_psx(p->slug, label_l)) {
-        snprintf(p->slug, sizeof(p->slug), "psx");
-        snprintf(p->label, sizeof(p->label), "PSX");
-        p->install_mode = INSTALL_PSX;
-        p->support_level = SUPPORT_VERIFIED;
-        p->icon_index = ICON_PSX;
-        p->known = true;
-    } else if (slug_matches(p->slug, "gba")) {
-        p->support_level = SUPPORT_VERIFIED;
-        p->icon_index = ICON_GBA;
-        p->known = true;
-    } else if (slug_matches(p->slug, "gb") || slug_matches(p->slug, "gameboy")) {
-        snprintf(p->slug, sizeof(p->slug), "gb");
-        p->support_level = SUPPORT_VERIFIED;
-        p->icon_index = ICON_GB;
-        p->known = true;
-    } else if (slug_matches(p->slug, "gbc") || slug_matches(p->slug, "gameboy-color")) {
-        snprintf(p->slug, sizeof(p->slug), "gbc");
-        p->support_level = SUPPORT_VERIFIED;
-        p->icon_index = ICON_GBC;
-        p->known = true;
-    } else if (slug_matches(p->slug, "nes")) {
-        p->support_level = SUPPORT_VERIFIED;
-        p->icon_index = ICON_NES;
-        p->known = true;
-    } else if (slug_is_snes(p->slug, label_l)) {
-        snprintf(p->slug, sizeof(p->slug), "snes");
-        snprintf(p->label, sizeof(p->label), "SNES");
-        p->support_level = SUPPORT_VERIFIED;
-        p->icon_index = ICON_SNES;
-        p->known = true;
-    } else if (slug_matches(p->slug, "genesis") || slug_matches(p->slug, "megadrive") || slug_matches(p->slug, "mega-drive")) {
-        snprintf(p->slug, sizeof(p->slug), "genesis");
-        p->support_level = SUPPORT_VERIFIED;
-        p->icon_index = ICON_GENESIS;
-        p->known = true;
-    } else if (slug_matches(p->slug, "n64") || slug_matches(p->slug, "nintendo-64")) {
-        snprintf(p->slug, sizeof(p->slug), "n64");
-        p->support_level = SUPPORT_UNTESTED;
-        p->icon_index = ICON_N64;
-        p->known = true;
-    }
-
-    const char *path = get_platform_path_config(state, p->slug);
-    if (path[0]) {
-        snprintf(p->path, sizeof(p->path), "%s", path);
-        p->path_configured = true;
-        if (!p->known) p->support_level = SUPPORT_UNTESTED;
-    } else {
-        p->support_level = SUPPORT_PATH_REQUIRED;
-    }
-}
-
-static void init_defaults(AppState *state) {
+void init_defaults(AppState *state) {
     memset(state, 0, sizeof(*state));
     state->view = VIEW_LOADING;
-    state->games_worker_thread = -1;
-    state->games_lock = -1;
-    state->cover_worker_thread = -1;
+    state->library_worker.thread = -1;
+    state->library_worker.lock = -1;
+    state->cover_worker.thread = -1;
     state->auto_refresh_livearea = false;
     snprintf(state->server_url, sizeof(state->server_url), "http://example.com/");
     snprintf(state->vita_install_dir, sizeof(state->vita_install_dir), CONFIG_DIR "/downloads/psvita");
@@ -211,7 +103,7 @@ static void init_defaults(AppState *state) {
     snprintf(state->detail, sizeof(state->detail), "Preparing Vita RomM");
 }
 
-static void ensure_config(AppState *state) {
+void ensure_config(AppState *state) {
     mkdirs();
     SceUID fd = sceIoOpen(CONFIG_PATH, SCE_O_RDONLY, 0);
     if (fd >= 0) {
@@ -315,7 +207,7 @@ static void ensure_config(AppState *state) {
     }
 }
 
-static void build_api_url(char *dst, size_t dst_size, const AppState *state, const char *path) {
+void build_api_url(char *dst, size_t dst_size, const AppState *state, const char *path) {
     char base[256];
     snprintf(base, sizeof(base), "%s", state->server_url);
     trim_line(base);
@@ -324,7 +216,7 @@ static void build_api_url(char *dst, size_t dst_size, const AppState *state, con
     snprintf(dst, dst_size, "%s%s", base, path);
 }
 
-static void escape_url_spaces(char *url, size_t url_size) {
+void escape_url_spaces(char *url, size_t url_size) {
     char tmp[460];
     size_t out = 0;
     for (size_t i = 0; url[i] && out + 1 < sizeof(tmp); i++) {

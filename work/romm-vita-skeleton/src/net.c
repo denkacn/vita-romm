@@ -1,4 +1,10 @@
-static void init_network(AppState *state) {
+#include "net.h"
+#include "ui.h"
+#include "ui_resources.h"
+
+static char net_memory[1 * 1024 * 1024];
+
+void init_network(AppState *state) {
     SceNetInitParam p;
     memset(&p, 0, sizeof(p));
     p.memory = net_memory;
@@ -9,7 +15,7 @@ static void init_network(AppState *state) {
     snprintf(state->network_status, sizeof(state->network_status), "Network initialized");
 }
 
-static void refresh_network(AppState *state) {
+void refresh_network(AppState *state) {
     int s = 0;
     if (sceNetCtlInetGetState(&s) < 0 || s != SCE_NETCTL_STATE_CONNECTED) {
         snprintf(state->network_status, sizeof(state->network_status), "Not connected");
@@ -58,15 +64,15 @@ static int download_progress_cb(void *userdata, curl_off_t dltotal, curl_off_t d
     if (dltotal > 0) {
         double mb_total = (double)dltotal / (1024.0 * 1024.0);
         int percent = (int)((dlnow * 100) / dltotal);
-        if (ctx->state->progress_total > 1) {
-            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading file %d/%d %d%%", ctx->state->progress_current, ctx->state->progress_total, percent);
+        if (ctx->state->progress.total > 1) {
+            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading file %d/%d %d%%", ctx->state->progress.current, ctx->state->progress.total, percent);
         } else {
             snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading %d%%", percent);
         }
         snprintf(ctx->state->detail, sizeof(ctx->state->detail), "%.1f / %.1f MB", mb_now, mb_total);
     } else {
-        if (ctx->state->progress_total > 1) {
-            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading file %d/%d", ctx->state->progress_current, ctx->state->progress_total);
+        if (ctx->state->progress.total > 1) {
+            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading file %d/%d", ctx->state->progress.current, ctx->state->progress.total);
         } else {
             snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading");
         }
@@ -101,7 +107,7 @@ static struct curl_slist *setup_headers(CURL *curl, const AppState *state, const
     return headers;
 }
 
-static CURLcode http_get(AppState *state, const char *url, char *response, long *code_out) {
+CURLcode http_get(AppState *state, const char *url, char *response, long *code_out) {
     response[0] = '\0';
     *code_out = 0;
     CURL *curl = curl_easy_init();
@@ -116,7 +122,7 @@ static CURLcode http_get(AppState *state, const char *url, char *response, long 
     return code;
 }
 
-static CURLcode http_get_reuse(AppState *state, CURL *curl, const char *url, char *response, long *code_out) {
+CURLcode http_get_reuse(AppState *state, CURL *curl, const char *url, char *response, long *code_out) {
     if (!curl) return http_get(state, url, response, code_out);
     response[0] = '\0';
     *code_out = 0;
@@ -130,7 +136,7 @@ static CURLcode http_get_reuse(AppState *state, CURL *curl, const char *url, cha
     return code;
 }
 
-static CURLcode http_download(AppState *state, const char *url, const char *path, long *code_out) {
+CURLcode http_download(AppState *state, const char *url, const char *path, long *code_out) {
     *code_out = 0;
     SceUID fd = sceIoOpen(path, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, VITA_FILE_MODE);
     if (fd < 0) return CURLE_WRITE_ERROR;
@@ -161,7 +167,7 @@ static CURLcode http_download(AppState *state, const char *url, const char *path
     return code;
 }
 
-static CURLcode http_download_quiet(AppState *state, const char *url, const char *path, long *code_out) {
+CURLcode http_download_quiet(AppState *state, const char *url, const char *path, long *code_out) {
     *code_out = 0;
     SceUID fd = sceIoOpen(path, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, VITA_FILE_MODE);
     if (fd < 0) return CURLE_WRITE_ERROR;
