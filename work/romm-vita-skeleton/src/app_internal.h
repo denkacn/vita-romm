@@ -25,17 +25,21 @@
 #define APP_TITLE "Vita RomM"
 #define APP_TITLEID "ROMM00001"
 #ifndef ROMM_VITA_VERSION
-#define ROMM_VITA_VERSION "0.4.0"
+#define ROMM_VITA_VERSION "0.5.18"
 #endif
 #define CONFIG_DIR "ux0:data/vita-romm"
 #define CONFIG_PATH CONFIG_DIR "/config.txt"
 #define POSTER_CACHE_DIR CONFIG_DIR "/covers"
+#define PLATFORM_ICON_CACHE_DIR CONFIG_DIR "/platform-icons"
 #define DOWNLOAD_DIR CONFIG_DIR "/downloads"
 #define FONT_RENDERER_NAME "Inter bitmap atlas"
-#define HTTP_RESPONSE_MAX 131071
-#define MAX_ROMS 48
+#define HTTP_RESPONSE_MAX 524287
+#define MAX_ROMS 1024
+#define MAX_PLATFORMS 32
+#define MAX_PLATFORM_IDS 8
+#define MAX_PLATFORM_PATHS 32
+#define BUILTIN_PLATFORM_ICON_COUNT 11
 #define MAX_REFRESH_TITLES 1024
-#define PLATFORM_COUNT 2
 
 #define COLOR_BG RGBA8(17, 20, 28, 255)
 #define COLOR_BAR RGBA8(28, 35, 46, 255)
@@ -59,12 +63,60 @@ typedef enum {
 } ViewMode;
 
 typedef struct {
-    const char *label;
-    const char *slug;
-    const char *fallback_dir;
+    char label[96];
+    char slug[40];
+    char path[160];
+    char icon_path[128];
     int id;
+    int ids[MAX_PLATFORM_IDS];
+    int id_count;
     int rom_count;
+    int install_mode;
+    int support_level;
+    int icon_index;
+    bool path_configured;
+    bool known;
+    vita2d_texture *icon;
 } PlatformDef;
+
+typedef struct {
+    char slug[40];
+    char path[160];
+} PlatformPathConfig;
+
+typedef enum {
+    INSTALL_VITA = 0,
+    INSTALL_ADRENALINE_PSP,
+    INSTALL_PSX,
+    INSTALL_FOLDER
+} InstallMode;
+
+typedef enum {
+    SUPPORT_MANAGED = 0,
+    SUPPORT_VERIFIED,
+    SUPPORT_UNTESTED,
+    SUPPORT_PATH_REQUIRED
+} SupportLevel;
+
+typedef enum {
+    ICON_PSVITA = 0,
+    ICON_PSP,
+    ICON_PSX,
+    ICON_GBA,
+    ICON_GB,
+    ICON_GBC,
+    ICON_NES,
+    ICON_SNES,
+    ICON_GENESIS,
+    ICON_N64,
+    ICON_FALLBACK
+} PlatformIconIndex;
+
+typedef struct {
+    char name[320];
+    char url[360];
+    long long size_bytes;
+} RomFileItem;
 
 typedef struct {
     int id;
@@ -72,6 +124,7 @@ typedef struct {
     char file_name[160];
     char cover_url[320];
     char cover_path[128];
+    long long size_bytes;
     vita2d_texture *cover;
     bool is_downloaded;
     bool is_installed;
@@ -90,11 +143,15 @@ typedef struct {
     char psp_install_dir[160];
     char psp_game_dir[160];
     char psp_download_dir[160];
+    char psx_pbp_dir[160];
+    PlatformPathConfig platform_paths[MAX_PLATFORM_PATHS];
+    int platform_path_count;
     char status[256];
     char detail[256];
     char network_status[96];
     char ip_address[64];
-    PlatformDef platforms[PLATFORM_COUNT];
+    PlatformDef platforms[MAX_PLATFORMS];
+    int platform_count;
     RomItem roms[MAX_ROMS];
     int rom_count;
     int selected_platform;
@@ -118,14 +175,13 @@ typedef struct {
 
 static char net_memory[1 * 1024 * 1024];
 static char http_response[HTTP_RESPONSE_MAX + 1];
-static char stats_response[HTTP_RESPONSE_MAX + 1];
 typedef struct {
     vita2d_texture *atlas;
 } BitmapFont;
 
 static BitmapFont *g_font = NULL;
 static vita2d_texture *g_logo_texture = NULL;
-static vita2d_texture *g_platform_textures[PLATFORM_COUNT] = { NULL };
+static vita2d_texture *g_platform_textures[BUILTIN_PLATFORM_ICON_COUNT] = { NULL };
 
 static void draw_ui(BitmapFont *font, const AppState *state);
 static void update_rom_status(AppState *state, int index);

@@ -15,7 +15,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Vita RomM")
 set(VITA_TITLEID "ROMM00001")
 set(VITA_VERSION "01.00")
-set(ROMM_VITA_VERSION "0.4.0")
+set(ROMM_VITA_VERSION "0.5.18")
 
 set(VITA_IP "" CACHE STRING "PS Vita IP address for FTP/vitacompanion deploy")
 set(VITA_FTP_PORT "1337" CACHE STRING "PS Vita FTP port")
@@ -72,6 +72,15 @@ vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} eboot.bin
   FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/inter_atlas.png assets/fonts/inter_atlas.png
   FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_psvita.png assets/platforms/platform_psvita.png
   FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_psp.png assets/platforms/platform_psp.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_psx.png assets/platforms/platform_psx.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_gba.png assets/platforms/platform_gba.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_gb.png assets/platforms/platform_gb.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_gbc.png assets/platforms/platform_gbc.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_nes.png assets/platforms/platform_nes.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_snes.png assets/platforms/platform_snes.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_genesis.png assets/platforms/platform_genesis.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_n64.png assets/platforms/platform_n64.png
+  FILE ${CMAKE_CURRENT_SOURCE_DIR}/assets/platforms/platform_fallback.png assets/platforms/platform_fallback.png
 )
 
 if(VITA_IP)

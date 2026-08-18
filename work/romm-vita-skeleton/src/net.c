@@ -58,10 +58,18 @@ static int download_progress_cb(void *userdata, curl_off_t dltotal, curl_off_t d
     if (dltotal > 0) {
         double mb_total = (double)dltotal / (1024.0 * 1024.0);
         int percent = (int)((dlnow * 100) / dltotal);
-        snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading %d%%", percent);
+        if (ctx->state->progress_total > 1) {
+            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading file %d/%d %d%%", ctx->state->progress_current, ctx->state->progress_total, percent);
+        } else {
+            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading %d%%", percent);
+        }
         snprintf(ctx->state->detail, sizeof(ctx->state->detail), "%.1f / %.1f MB", mb_now, mb_total);
     } else {
-        snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading");
+        if (ctx->state->progress_total > 1) {
+            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading file %d/%d", ctx->state->progress_current, ctx->state->progress_total);
+        } else {
+            snprintf(ctx->state->status, sizeof(ctx->state->status), "Downloading");
+        }
         snprintf(ctx->state->detail, sizeof(ctx->state->detail), "%.1f MB", mb_now);
     }
 

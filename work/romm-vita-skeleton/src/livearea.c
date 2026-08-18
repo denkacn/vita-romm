@@ -149,20 +149,93 @@ static int refresh_vita_patch_for_title(const AppState *state, const char *title
     return refresh_vita_livearea_for_path(src, "ux0:temp/patch", title_id, false);
 }
 
+static bool extension_matches_platform(const char *name, const PlatformDef *p) {
+    if (p->install_mode == INSTALL_ADRENALINE_PSP) {
+        return ends_with_ci(name, ".iso") || ends_with_ci(name, ".cso") || ends_with_ci(name, ".pbp") || ends_with_ci(name, ".zip");
+    }
+    if (p->install_mode == INSTALL_PSX) {
+        return ends_with_ci(name, ".pbp") || ends_with_ci(name, ".cue") || ends_with_ci(name, ".bin") || ends_with_ci(name, ".zip");
+    }
+    if (strcmp(p->slug, "gba") == 0) return ends_with_ci(name, ".gba") || ends_with_ci(name, ".zip");
+    if (strcmp(p->slug, "gb") == 0) return ends_with_ci(name, ".gb") || ends_with_ci(name, ".zip");
+    if (strcmp(p->slug, "gbc") == 0) return ends_with_ci(name, ".gbc") || ends_with_ci(name, ".zip");
+    if (strcmp(p->slug, "nes") == 0) return ends_with_ci(name, ".nes") || ends_with_ci(name, ".zip");
+    if (strcmp(p->slug, "snes") == 0) return ends_with_ci(name, ".sfc") || ends_with_ci(name, ".smc") || ends_with_ci(name, ".zip");
+    if (strcmp(p->slug, "genesis") == 0) return ends_with_ci(name, ".md") || ends_with_ci(name, ".gen") || ends_with_ci(name, ".bin") || ends_with_ci(name, ".zip");
+    if (strcmp(p->slug, "n64") == 0) return ends_with_ci(name, ".z64") || ends_with_ci(name, ".n64") || ends_with_ci(name, ".v64") || ends_with_ci(name, ".zip");
+    return true;
+}
+
+static void platform_cache_dir(const PlatformDef *p, char *path, size_t path_size) {
+    snprintf(path, path_size, "%s/%s", DOWNLOAD_DIR, p->slug[0] ? p->slug : "custom");
+}
+
+static void rom_folder_name(const RomItem *rom, char *folder, size_t folder_size) {
+    snprintf(folder, folder_size, "%s", rom->name[0] ? rom->name : rom->file_name);
+    char *dot = strrchr(folder, '.');
+    if (dot) *dot = '\0';
+    sanitize_filename(folder);
+    if (!folder[0]) snprintf(folder, folder_size, "rom_%d", rom->id);
+}
+
 static void rom_download_path(const AppState *state, const RomItem *rom, int platform_index, char *path, size_t path_size) {
+    const PlatformDef *p = &state->platforms[platform_index];
     char file[180];
     snprintf(file, sizeof(file), "%s", rom->file_name[0] ? rom->file_name : rom->name);
     sanitize_filename(file);
-    if (platform_index == 1 && (ends_with_ci(file, ".iso") || ends_with_ci(file, ".cso"))) {
+    if (p->install_mode == INSTALL_ADRENALINE_PSP && (ends_with_ci(file, ".iso") || ends_with_ci(file, ".cso"))) {
         snprintf(path, path_size, "%s/%s", state->psp_install_dir, file);
-    } else if (platform_index == 1 && ends_with_ci(file, ".pbp")) {
+    } else if (p->install_mode == INSTALL_ADRENALINE_PSP && ends_with_ci(file, ".pbp")) {
         char folder[80];
         make_folder_name_from_file(file, folder, sizeof(folder));
         snprintf(path, path_size, "%s/%s/EBOOT.PBP", state->psp_game_dir, folder);
+    } else if (p->install_mode == INSTALL_PSX && ends_with_ci(file, ".pbp")) {
+        char folder[80];
+        make_folder_name_from_file(file, folder, sizeof(folder));
+        snprintf(path, path_size, "%s/%s/EBOOT.PBP", state->psx_pbp_dir, folder);
+    } else if (p->install_mode == INSTALL_PSX && (ends_with_ci(file, ".cue") || ends_with_ci(file, ".bin"))) {
+        snprintf(path, path_size, "%s/%s", p->path, file);
+    } else if (p->install_mode == INSTALL_FOLDER) {
+        if (ends_with_ci(file, ".zip")) {
+            char custom_cache[180];
+            platform_cache_dir(p, custom_cache, sizeof(custom_cache));
+            snprintf(path, path_size, "%s/%s", custom_cache, file);
+        } else {
+            snprintf(path, path_size, "%s/%s", p->path, file);
+        }
+    } else if (p->install_mode == INSTALL_PSX) {
+        char custom_cache[180];
+        platform_cache_dir(p, custom_cache, sizeof(custom_cache));
+        snprintf(path, path_size, "%s/%s", ends_with_ci(file, ".zip") ? custom_cache : p->path, file);
     } else {
-        const char *download_dir = platform_index == 0 ? state->vita_download_dir : state->psp_download_dir;
+        char custom_cache[180];
+        const char *download_dir = state->vita_download_dir;
+        if (p->install_mode == INSTALL_ADRENALINE_PSP) download_dir = state->psp_download_dir;
+        else if (p->install_mode != INSTALL_VITA) {
+            platform_cache_dir(p, custom_cache, sizeof(custom_cache));
+            download_dir = custom_cache;
+        }
         snprintf(path, path_size, "%s/%s", download_dir, file);
     }
+}
+
+static bool dir_has_file_with_ext(const char *path, const char *ext) {
+    SceUID dfd = sceIoDopen(path);
+    if (dfd < 0) return false;
+    bool found = false;
+    while (1) {
+        SceIoDirent ent;
+        memset(&ent, 0, sizeof(ent));
+        int res = sceIoDread(dfd, &ent);
+        if (res <= 0) break;
+        if (SCE_S_ISDIR(ent.d_stat.st_mode)) continue;
+        if (ends_with_ci(ent.d_name, ext)) {
+            found = true;
+            break;
+        }
+    }
+    sceIoDclose(dfd);
+    return found;
 }
 
 static bool extract_title_id_from_text(const char *text, char *dst, size_t dst_size) {
@@ -190,13 +263,13 @@ static bool extract_title_id_from_text(const char *text, char *dst, size_t dst_s
     return false;
 }
 
-static bool vita_title_id_for_rom(const AppState *state, const RomItem *rom, char *dst, size_t dst_size) {
+static bool vita_title_id_for_rom(const AppState *state, const RomItem *rom, int platform_index, char *dst, size_t dst_size) {
     dst[0] = '\0';
     if (extract_title_id_from_text(rom->file_name, dst, dst_size)) return true;
     if (extract_title_id_from_text(rom->name, dst, dst_size)) return true;
 
     char path[340];
-    rom_download_path(state, rom, 0, path, sizeof(path));
+    rom_download_path(state, rom, platform_index, path, sizeof(path));
     if (!usable_file_exists(path) || !ends_with_ci(path, ".zip")) return false;
 
     int err = 0;
@@ -217,63 +290,92 @@ static bool rom_is_downloaded(const AppState *state, const RomItem *rom, int pla
 }
 
 static bool rom_is_installed(const AppState *state, const RomItem *rom, int platform_index) {
-    if (platform_index == 0) {
+    const PlatformDef *p = &state->platforms[platform_index];
+    if (p->install_mode == INSTALL_VITA) {
         char title_id[16];
-        if (!vita_title_id_for_rom(state, rom, title_id, sizeof(title_id))) return false;
+        if (!vita_title_id_for_rom(state, rom, platform_index, title_id, sizeof(title_id))) return false;
         char path[224];
         snprintf(path, sizeof(path), "%s/%s/eboot.bin", state->vita_app_dir, title_id);
         return usable_file_exists(path);
     }
+    if (p->support_level == SUPPORT_PATH_REQUIRED || !p->path_configured || !p->path[0]) return false;
 
     char file[180];
     snprintf(file, sizeof(file), "%s", rom->file_name[0] ? rom->file_name : rom->name);
     sanitize_filename(file);
-    if (ends_with_ci(file, ".iso") || ends_with_ci(file, ".cso")) {
+    if (p->install_mode == INSTALL_ADRENALINE_PSP && (ends_with_ci(file, ".iso") || ends_with_ci(file, ".cso"))) {
         char path[340];
         snprintf(path, sizeof(path), "%s/%s", state->psp_install_dir, file);
         return usable_file_exists(path);
     }
-    if (ends_with_ci(file, ".pbp")) {
+    if ((p->install_mode == INSTALL_ADRENALINE_PSP || p->install_mode == INSTALL_PSX) && ends_with_ci(file, ".pbp")) {
         char path[340];
         char folder[80];
         make_folder_name_from_file(file, folder, sizeof(folder));
-        snprintf(path, sizeof(path), "%s/%s/EBOOT.PBP", state->psp_game_dir, folder);
+        snprintf(path, sizeof(path), "%s/%s/EBOOT.PBP", p->install_mode == INSTALL_PSX ? state->psx_pbp_dir : state->psp_game_dir, folder);
+        return usable_file_exists(path);
+    }
+    if (p->install_mode == INSTALL_PSX && (ends_with_ci(file, ".cue") || ends_with_ci(file, ".bin"))) {
+        char path[340];
+        snprintf(path, sizeof(path), "%s/%s", p->path, file);
+        if (usable_file_exists(path)) return true;
+
+        char folder[180];
+        rom_folder_name(rom, folder, sizeof(folder));
+        snprintf(path, sizeof(path), "%s/%s", p->path, folder);
+        return dir_exists(path) && dir_has_file_with_ext(path, ".cue") && dir_has_file_with_ext(path, ".bin");
+    }
+    if (p->install_mode == INSTALL_FOLDER) {
+        char path[340];
+        snprintf(path, sizeof(path), "%s/%s", p->path, file);
         return usable_file_exists(path);
     }
     if (!ends_with_ci(file, ".zip")) return false;
 
     char zip_path[340];
-    rom_download_path(state, rom, 1, zip_path, sizeof(zip_path));
+    rom_download_path(state, rom, platform_index, zip_path, sizeof(zip_path));
     if (!usable_file_exists(zip_path)) return false;
 
     int err = 0;
     zip_t *archive = zip_open(zip_path, ZIP_RDONLY, &err);
     if (!archive) return false;
     PspZipHint hint;
-    bool has_hint = find_psp_zip_hint(archive, &hint);
+    bool has_hint = (p->install_mode == INSTALL_ADRENALINE_PSP || p->install_mode == INSTALL_PSX) && find_psp_zip_hint(archive, &hint);
     if (has_hint && hint.folder[0]) {
         zip_close(archive);
         char path[340];
-        snprintf(path, sizeof(path), "%s/%s/EBOOT.PBP", state->psp_game_dir, hint.folder);
+        snprintf(path, sizeof(path), "%s/%s/EBOOT.PBP", p->install_mode == INSTALL_PSX ? state->psx_pbp_dir : state->psp_game_dir, hint.folder);
         return usable_file_exists(path);
     }
     zip_int64_t count = zip_get_num_entries(archive, 0);
     bool installed = false;
+    bool psx_cue = false;
+    bool psx_bin = false;
     for (zip_uint64_t i = 0; count > 0 && i < (zip_uint64_t)count; i++) {
         const char *name = zip_get_name(archive, i, 0);
         if (!name) continue;
-        if (!ends_with_ci(name, ".iso") && !ends_with_ci(name, ".cso")) continue;
+        if (p->install_mode == INSTALL_ADRENALINE_PSP && !ends_with_ci(name, ".iso") && !ends_with_ci(name, ".cso")) continue;
+        if ((p->install_mode == INSTALL_FOLDER || p->install_mode == INSTALL_PSX) && !extension_matches_platform(name, p)) continue;
+        if (p->install_mode == INSTALL_PSX && ends_with_ci(name, ".cue")) psx_cue = true;
+        if (p->install_mode == INSTALL_PSX && ends_with_ci(name, ".bin")) psx_bin = true;
         char file[180];
         snprintf(file, sizeof(file), "%s", basename_ptr(name));
         sanitize_filename(file);
         char path[340];
-        snprintf(path, sizeof(path), "%s/%s", state->psp_install_dir, file);
+        snprintf(path, sizeof(path), "%s/%s", p->install_mode == INSTALL_ADRENALINE_PSP ? state->psp_install_dir : p->path, file);
         if (usable_file_exists(path)) {
             installed = true;
             break;
         }
     }
     zip_close(archive);
+    if (p->install_mode == INSTALL_PSX && psx_cue && psx_bin) {
+        char folder[180];
+        char path[340];
+        rom_folder_name(rom, folder, sizeof(folder));
+        snprintf(path, sizeof(path), "%s/%s", p->path, folder);
+        return dir_exists(path) && dir_has_file_with_ext(path, ".cue") && dir_has_file_with_ext(path, ".bin");
+    }
     if (installed) return true;
     return false;
 }
@@ -283,6 +385,10 @@ static void update_rom_status(AppState *state, int index) {
     RomItem *rom = &state->roms[index];
     rom->is_downloaded = rom_is_downloaded(state, rom, state->selected_platform);
     rom->is_installed = rom_is_installed(state, rom, state->selected_platform);
+    if (state->platforms[state->selected_platform].install_mode == INSTALL_FOLDER ||
+        state->platforms[state->selected_platform].install_mode == INSTALL_PSX) {
+        rom->is_downloaded = rom->is_downloaded || rom->is_installed;
+    }
 }
 
 static bool validate_vita_install(const AppState *state, const char *title_id, char *missing, size_t missing_size) {

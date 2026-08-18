@@ -165,6 +165,7 @@ static bool get_vita_title_id_for_entry(const char *entry_name, const VitaZipHin
 }
 
 static bool map_zip_entry_to_install_path(const AppState *state, int platform_index, const char *entry_name, const VitaZipHint *hint, const PspZipHint *psp_hint, char *dst, size_t dst_size) {
+    const PlatformDef *platform = &state->platforms[platform_index];
     char entry[320];
     snprintf(entry, sizeof(entry), "%s", entry_name);
     for (char *p = entry; *p; p++) {
@@ -174,7 +175,7 @@ static bool map_zip_entry_to_install_path(const AppState *state, int platform_in
     size_t len = strlen(entry);
     if (len == 0 || entry[len - 1] == '/' || path_has_traversal(entry)) return false;
 
-    if (platform_index == 1) {
+    if (platform->install_mode == INSTALL_ADRENALINE_PSP || platform->install_mode == INSTALL_PSX) {
         if (ends_with_ci(entry, ".iso") || ends_with_ci(entry, ".cso")) {
             char file[180];
             snprintf(file, sizeof(file), "%s", basename_ptr(entry));
@@ -191,13 +192,20 @@ static bool map_zip_entry_to_install_path(const AppState *state, int platform_in
             } else {
                 payload = basename_ptr(entry);
             }
-            snprintf(dst, dst_size, "%s/%s/%s", state->psp_game_dir, psp_hint->folder, payload);
+            snprintf(dst, dst_size, "%s/%s/%s", platform->install_mode == INSTALL_PSX ? state->psx_pbp_dir : state->psp_game_dir, psp_hint->folder, payload);
             return true;
         }
         if (ends_with_ci(entry, ".pbp")) {
             char folder[80];
             make_folder_name_from_file(entry, folder, sizeof(folder));
-            snprintf(dst, dst_size, "%s/%s/EBOOT.PBP", state->psp_game_dir, folder);
+            snprintf(dst, dst_size, "%s/%s/EBOOT.PBP", platform->install_mode == INSTALL_PSX ? state->psx_pbp_dir : state->psp_game_dir, folder);
+            return true;
+        }
+        if (platform->install_mode == INSTALL_PSX && (ends_with_ci(entry, ".cue") || ends_with_ci(entry, ".bin"))) {
+            char file[180];
+            snprintf(file, sizeof(file), "%s", basename_ptr(entry));
+            sanitize_filename(file);
+            snprintf(dst, dst_size, "%s/%s", platform->path, file);
             return true;
         }
         return false;

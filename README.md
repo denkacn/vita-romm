@@ -1,6 +1,6 @@
 # Vita RomM
 
-Vita RomM is a PS Vita homebrew client for browsing a self-hosted [RomM](https://github.com/rommapp/romm) library and installing owned PS Vita and PSP backups directly on a modded PlayStation Vita.
+Vita RomM is a PS Vita homebrew client for browsing a self-hosted [RomM](https://github.com/rommapp/romm) library, installing owned PS Vita/PSP backups, and downloading retro ROM files into configured emulator folders.
 
 The app is built for a personal homebrew workflow: open Vita RomM, choose a platform, browse games with cover art, download/install a selected title, and refresh LiveArea for installed Vita games.
 
@@ -17,12 +17,14 @@ PlayStation, PS Vita, PSP, LiveArea, and related names are trademarks or registe
 ## Features
 
 - RomM server connection using `server_url` and `api_token`.
-- Platform picker with PS Vita and PSP support.
+- Dynamic platform picker for RomM platforms that contain games.
 - Game browser with cover/poster cache.
 - Full game list overlay for quick selection.
 - Download progress while fetching game files.
 - ZIP extraction/install flow for PS Vita packages.
 - PSP ISO/CSO/PBP install flow.
+- PSX `.bin/.cue` folder download flow and PSX `EBOOT.PBP` support.
+- Folder download flow for verified and custom retro platforms.
 - Downloaded/installed status badges.
 - Manual Refresh LiveArea action from the main screen.
 - Optional experimental automatic LiveArea refresh after Vita installs.
@@ -30,19 +32,27 @@ PlayStation, PS Vita, PSP, LiveArea, and related names are trademarks or registe
 
 ## Supported Platforms
 
-Currently supported:
+Managed install platforms:
 
 - PlayStation Vita
 - PlayStation Portable
 
-Planned/possible future platforms:
+Verified folder-download platforms:
 
 - PlayStation / PSX
+- Game Boy Advance
+- Game Boy
+- Game Boy Color
 - NES
 - SNES
-- Other systems that can be emulated on PS Vita
+- Sega Mega Drive / Genesis
 
-Only PS Vita and PSP are enabled in the current client build.
+Untested folder-download platforms:
+
+- Nintendo 64
+- Any custom RomM platform with `platform.<slug>.path` configured
+
+For folder-download platforms, Vita RomM only downloads files to the configured folder. You run those games with RetroArch or another emulator on your Vita.
 
 ## Requirements
 
@@ -52,13 +62,14 @@ On the PS Vita:
 - VitaShell installed.
 - Network access to your RomM server.
 - Enough free space on `ux0:` for downloads and installed games.
-- Adrenaline installed if you want to play PSP games.
+- Adrenaline installed if you want to play PSP or PSX `EBOOT.PBP` games.
+- RetroArch or another emulator installed if you want to use folder-download retro platforms.
 
 On the server side:
 
 - A working RomM instance.
 - A RomM API token.
-- RomM platforms mapped for `psvita` and `psp` folders.
+- RomM platforms mapped for the systems you want to use.
 - Your own legally backed up game files in RomM.
 
 ## Installing The VPK
@@ -117,6 +128,15 @@ psvita_license_dir=ux0:license
 psp_install_dir=ux0:pspemu/ISO
 psp_game_dir=ux0:pspemu/PSP/GAME
 psp_download_dir=ux0:data/vita-romm/downloads/psp
+platform.psx.path=ux0:data/vita-romm/roms/psx
+platform.psx.pbp_path=ux0:pspemu/PSP/GAME
+platform.gba.path=ux0:data/vita-romm/roms/gba
+platform.gb.path=ux0:data/vita-romm/roms/gb
+platform.gbc.path=ux0:data/vita-romm/roms/gbc
+platform.nes.path=ux0:data/vita-romm/roms/nes
+platform.snes.path=ux0:data/vita-romm/roms/snes
+platform.genesis.path=ux0:data/vita-romm/roms/genesis
+platform.n64.path=ux0:data/vita-romm/roms/n64
 auto_refresh_livearea=0
 ```
 
@@ -137,18 +157,49 @@ Do not commit your real `api_token` to a public repository.
 | `psp_install_dir` | Target directory for PSP `.iso` and `.cso` files. Usually `ux0:pspemu/ISO`. |
 | `psp_game_dir` | Target directory for PSP homebrew/PSN-style `EBOOT.PBP` games. Usually `ux0:pspemu/PSP/GAME`. |
 | `psp_download_dir` | Where PSP ZIP or temporary downloads are stored. |
+| `platform.psx.path` | Target folder for PSX `.bin/.cue` file sets. |
+| `platform.psx.pbp_path` | Target folder for PSX `EBOOT.PBP` games used by Adrenaline. Defaults to `ux0:pspemu/PSP/GAME`. |
+| `platform.<slug>.path` | Target folder for folder-download platforms. Example: `platform.gba.path=ux0:data/retroarch/roms/gba`. |
 | `auto_refresh_livearea` | `0` disables automatic LiveArea refresh. `1` enables experimental automatic refresh. |
 
 ## RomM Folder / Platform Setup
 
-The current client expects RomM platforms for:
+The client shows every RomM platform that has at least one game.
+
+Managed platforms use special install logic:
 
 ```text
 psvita
 psp
 ```
 
-Your exact folder names on the RomM server can be different, but they must be mapped in RomM to the correct platform:
+Verified folder-download slugs:
+
+```text
+psx
+gba
+gb
+gbc
+nes
+snes
+genesis
+```
+
+Experimental/untested:
+
+```text
+n64
+```
+
+Custom platforms can be enabled by adding:
+
+```text
+platform.<slug>.path=ux0:data/retroarch/roms/<slug>
+```
+
+If a RomM platform has games but no configured path, Vita RomM shows it as `Path required` and displays the config line you need to add.
+
+Your exact folder names on the RomM server can be different, but they should be mapped in RomM to the correct platform:
 
 - `psvita` should map to PlayStation Vita.
 - `psp` should map to PlayStation Portable.
@@ -213,6 +264,38 @@ Expected behavior:
 - ZIP archives are scanned for `.iso`, `.cso`, or `EBOOT.PBP` and extracted to the matching PSP location.
 
 Adrenaline is responsible for showing and running PSP content. Vita RomM only places the files in the configured PSP/Adrenaline folders.
+
+## PSX Formats
+
+PSX has two supported flows:
+
+```text
+EBOOT.PBP -> platform.psx.pbp_path/<game-folder>/EBOOT.PBP
+.bin/.cue -> platform.psx.path/<game-folder>/
+```
+
+For `.bin/.cue` games, Vita RomM downloads the whole file set into a dedicated game folder and preserves file names because `.cue` files reference the exact `.bin` names.
+
+If a PSX game is stored in a ZIP archive:
+
+- ZIP with `EBOOT.PBP` is extracted to `platform.psx.pbp_path/<game-folder>/EBOOT.PBP`.
+- ZIP with `.cue` and `.bin` files is extracted to `platform.psx.path/<game-folder>/`.
+
+## Retro Folder Platforms
+
+Folder-download platforms copy ROM files into the configured folder:
+
+```text
+gba: .gba
+gb: .gb
+gbc: .gbc
+nes: .nes
+snes: .sfc .smc
+genesis: .md .gen .bin
+n64: .z64 .n64 .v64
+```
+
+ZIP archives are scanned for a matching ROM file. For custom platforms, Vita RomM downloads to the configured path but marks the platform as untested.
 
 ## Cover Art
 
@@ -374,6 +457,6 @@ Then relaunch the app bubble.
 
 ## Project Status
 
-Current version: `0.4.0`.
+Current version: `0.5.18`.
 
 The app currently focuses on PS Vita and PSP installation workflows. The UI and platform list are expected to evolve as more emulated platforms are added.

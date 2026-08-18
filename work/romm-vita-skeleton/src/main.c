@@ -11,8 +11,10 @@
 #include "installer.c"
 #include "ui_font.c"
 #include "ui.c"
+
+static AppState state;
+
 int main(void) {
-    AppState state;
     init_defaults(&state);
     sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
     ensure_config(&state);
@@ -31,8 +33,17 @@ int main(void) {
     }
     g_font = &font;
     g_logo_texture = vita2d_load_PNG_file("app0:sce_sys/icon0.png");
-    g_platform_textures[0] = vita2d_load_PNG_file("app0:assets/platforms/platform_psvita.png");
-    g_platform_textures[1] = vita2d_load_PNG_file("app0:assets/platforms/platform_psp.png");
+    g_platform_textures[ICON_PSVITA] = vita2d_load_PNG_file("app0:assets/platforms/platform_psvita.png");
+    g_platform_textures[ICON_PSP] = vita2d_load_PNG_file("app0:assets/platforms/platform_psp.png");
+    g_platform_textures[ICON_PSX] = vita2d_load_PNG_file("app0:assets/platforms/platform_psx.png");
+    g_platform_textures[ICON_GBA] = vita2d_load_PNG_file("app0:assets/platforms/platform_gba.png");
+    g_platform_textures[ICON_GB] = vita2d_load_PNG_file("app0:assets/platforms/platform_gb.png");
+    g_platform_textures[ICON_GBC] = vita2d_load_PNG_file("app0:assets/platforms/platform_gbc.png");
+    g_platform_textures[ICON_NES] = vita2d_load_PNG_file("app0:assets/platforms/platform_nes.png");
+    g_platform_textures[ICON_SNES] = vita2d_load_PNG_file("app0:assets/platforms/platform_snes.png");
+    g_platform_textures[ICON_GENESIS] = vita2d_load_PNG_file("app0:assets/platforms/platform_genesis.png");
+    g_platform_textures[ICON_N64] = vita2d_load_PNG_file("app0:assets/platforms/platform_n64.png");
+    g_platform_textures[ICON_FALLBACK] = vita2d_load_PNG_file("app0:assets/platforms/platform_fallback.png");
 
     draw_ui(&font, &state);
     sceDisplayWaitVblankStart();
@@ -49,11 +60,11 @@ int main(void) {
         old_buttons = pad.buttons;
 
         if (!state.busy && state.view == VIEW_PLATFORMS) {
-            if (pressed & (SCE_CTRL_LEFT | SCE_CTRL_RIGHT)) {
-                if (pressed & SCE_CTRL_LEFT) state.selected_platform = (state.selected_platform + PLATFORM_COUNT - 1) % PLATFORM_COUNT;
-                if (pressed & SCE_CTRL_RIGHT) state.selected_platform = (state.selected_platform + 1) % PLATFORM_COUNT;
+            if (state.platform_count > 0 && (pressed & (SCE_CTRL_LEFT | SCE_CTRL_RIGHT | SCE_CTRL_LTRIGGER | SCE_CTRL_RTRIGGER))) {
+                if (pressed & (SCE_CTRL_LEFT | SCE_CTRL_LTRIGGER)) state.selected_platform = (state.selected_platform + state.platform_count - 1) % state.platform_count;
+                if (pressed & (SCE_CTRL_RIGHT | SCE_CTRL_RTRIGGER)) state.selected_platform = (state.selected_platform + 1) % state.platform_count;
             }
-            if (pressed & SCE_CTRL_CROSS) {
+            if ((pressed & SCE_CTRL_CROSS) && state.platform_count > 0) {
                 draw_ui(&font, &state);
                 load_games(&state, state.selected_platform);
             }
@@ -106,7 +117,10 @@ int main(void) {
     for (int i = 0; i < state.rom_count; i++) {
         if (state.roms[i].cover) vita2d_free_texture(state.roms[i].cover);
     }
-    for (int i = 0; i < PLATFORM_COUNT; i++) {
+    for (int i = 0; i < state.platform_count; i++) {
+        if (state.platforms[i].icon) vita2d_free_texture(state.platforms[i].icon);
+    }
+    for (int i = 0; i < BUILTIN_PLATFORM_ICON_COUNT; i++) {
         if (g_platform_textures[i]) vita2d_free_texture(g_platform_textures[i]);
     }
     if (g_logo_texture) vita2d_free_texture(g_logo_texture);

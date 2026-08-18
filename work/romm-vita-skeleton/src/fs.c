@@ -75,6 +75,12 @@ static bool usable_file_exists(const char *path) {
     return sceIoGetstat(path, &st) >= 0 && !SCE_S_ISDIR(st.st_mode) && st.st_size > 0;
 }
 
+static bool dir_exists(const char *path) {
+    SceIoStat st;
+    memset(&st, 0, sizeof(st));
+    return sceIoGetstat(path, &st) >= 0 && SCE_S_ISDIR(st.st_mode);
+}
+
 static void redraw_now(const AppState *state) {
     if (g_font) {
         draw_ui(g_font, state);
