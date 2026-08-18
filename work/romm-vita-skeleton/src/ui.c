@@ -240,7 +240,12 @@ static void draw_games(BitmapFont *font, const AppState *state) {
     draw_text(font, 42, 112, 0.68f, COLOR_MUTED, p->label);
 
     if (state->rom_count <= 0) {
-        draw_text(font, 300, 270, 0.9f, COLOR_WARN, "No games loaded");
+        if (state->games_worker_running) {
+            draw_text(font, 300, 252, 0.9f, COLOR_ACCENT, "Loading games...");
+            draw_text_limit(font, 300, 292, 0.58f, COLOR_MUTED, state->detail, 42);
+        } else {
+            draw_text(font, 300, 270, 0.9f, COLOR_WARN, "No games loaded");
+        }
         return;
     }
 
@@ -305,7 +310,11 @@ static void draw_game_list(BitmapFont *font, const AppState *state) {
     draw_panel_border(64, 184, 832, 286, RGBA8(45, 56, 72, 255));
 
     if (state->rom_count <= 0) {
-        draw_text(font, 360, 330, 0.86f, COLOR_WARN, "No games loaded");
+        if (state->games_worker_running) {
+            draw_text(font, 340, 330, 0.86f, COLOR_ACCENT, "Loading games...");
+        } else {
+            draw_text(font, 360, 330, 0.86f, COLOR_WARN, "No games loaded");
+        }
         return;
     }
 

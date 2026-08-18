@@ -170,7 +170,18 @@ static void build_rom_content_url(AppState *state, const RomItem *rom, const cha
     build_api_url(url, url_size, state, api_path);
 }
 
-static bool download_rom_file_to(AppState *state, const RomItem *rom, const char *source_name, const char *maybe_url, const char *dst) {
+static void build_rom_file_content_url(AppState *state, int file_id, const char *file_name, char *url, size_t url_size) {
+    char encoded[420];
+    char api_path[560];
+    url_encode(encoded, sizeof(encoded), file_name);
+    snprintf(api_path, sizeof(api_path), "/api/roms/%d/files/content/%s", file_id, encoded);
+    build_api_url(url, url_size, state, api_path);
+}
+
+static bool download_rom_file_to(AppState *state, const RomItem *rom, const RomFileItem *file_item, const char *dst) {
+    const char *source_name = file_item->name;
+    const char *maybe_url = file_item->url;
+    long long expected_size = file_item->size_bytes;
     if (usable_file_exists(dst)) {
         snprintf(state->status, sizeof(state->status), "Using installed file");
         snprintf(state->detail, sizeof(state->detail), "%.230s", dst);
@@ -181,8 +192,10 @@ static bool download_rom_file_to(AppState *state, const RomItem *rom, const char
     char url[640];
     char part_path[384];
     long http = 0;
-    if (maybe_url && maybe_url[0] && (starts_with(maybe_url, "http://") || starts_with(maybe_url, "https://") || starts_with(maybe_url, "/"))) {
+    if (maybe_url && maybe_url[0]) {
         make_absolute_url(url, sizeof(url), state, maybe_url);
+    } else if (file_item->id > 0) {
+        build_rom_file_content_url(state, file_item->id, source_name, url, sizeof(url));
     } else {
         build_rom_content_url(state, rom, source_name, url, sizeof(url));
     }
@@ -195,6 +208,20 @@ static bool download_rom_file_to(AppState *state, const RomItem *rom, const char
     redraw_now(state);
     CURLcode c = http_download(state, url, part_path, &http);
     if (c == CURLE_OK && http == 200) {
+        SceIoStat st;
+        memset(&st, 0, sizeof(st));
+        long long actual_size = 0;
+        if (sceIoGetstat(part_path, &st) >= 0) actual_size = st.st_size;
+        if ((expected_size > 0 && actual_size > expected_size + (1024 * 1024) && actual_size > expected_size * 4) ||
+            (ends_with_ci(source_name, ".cue") && actual_size > 8 * 1024 * 1024)) {
+            char log_line[520];
+            snprintf(log_line, sizeof(log_line), "Download size mismatch: source=%.160s expected=%lld actual=%lld url=%.240s", source_name, expected_size, actual_size, url);
+            append_install_log(log_line);
+            remove_path_recursive(part_path);
+            snprintf(state->status, sizeof(state->status), "Download rejected");
+            snprintf(state->detail, sizeof(state->detail), "Size mismatch: %.120s", source_name);
+            return false;
+        }
         remove_path_recursive(dst);
         if (sceIoRename(part_path, dst) >= 0) return true;
     }
@@ -207,22 +234,15 @@ static bool download_rom_file_to(AppState *state, const RomItem *rom, const char
 static int install_psx_multi_files(AppState *state, RomItem *rom, PlatformDef *p) {
     RomFileItem files[24];
     int count = load_rom_file_list(state, rom, files, 24);
-    bool has_cue = false;
-    bool has_bin = false;
     int target_count = 0;
     long long target_size = 0;
     for (int i = 0; i < count; i++) {
-        if (ends_with_ci(files[i].name, ".cue")) {
-            has_cue = true;
-            target_count++;
-            if (files[i].size_bytes > 0) target_size += files[i].size_bytes;
-        } else if (ends_with_ci(files[i].name, ".bin")) {
-            has_bin = true;
+        if (psx_file_is_direct_install(files[i].name)) {
             target_count++;
             if (files[i].size_bytes > 0) target_size += files[i].size_bytes;
         }
     }
-    if (!has_cue || !has_bin) return 0;
+    if (target_count <= 0) return 0;
     if (target_size > 0) rom->size_bytes = target_size;
 
     char folder[180];
@@ -233,25 +253,27 @@ static int install_psx_multi_files(AppState *state, RomItem *rom, PlatformDef *p
     snprintf(log_line, sizeof(log_line), "PSX multi-file start: rom=%d files=%d targets=%d folder=%s", rom->id, count, target_count, folder);
     append_install_log(log_line);
     for (int i = 0; i < count; i++) {
-        if (!ends_with_ci(files[i].name, ".cue") && !ends_with_ci(files[i].name, ".bin")) continue;
+        if (!psx_file_is_direct_install(files[i].name)) continue;
         char file[180];
         snprintf(file, sizeof(file), "%s", basename_ptr(files[i].name));
         sanitize_filename(file);
         char dst[384];
-        snprintf(dst, sizeof(dst), "%s/%s/%s", p->path, folder, file);
+        psx_rom_file_destination(state, rom, &files[i], state->selected_platform, dst, sizeof(dst));
         total++;
         state->progress_current = total;
         state->progress_total = target_count;
         snprintf(state->status, sizeof(state->status), "Downloading file %d/%d", total, target_count);
         snprintf(state->detail, sizeof(state->detail), "%.180s", file);
         redraw_now(state);
-        snprintf(log_line, sizeof(log_line), "PSX file %d/%d: source=%.180s dst=%.180s", total, target_count, files[i].name, dst);
+        snprintf(log_line, sizeof(log_line), "PSX file %d/%d: id=%d source=%.150s size=%lld url=%s dst=%.120s", total, target_count, files[i].id, files[i].name, files[i].size_bytes, files[i].url[0] ? "api" : (files[i].id > 0 ? "file-content" : "rom-content"), dst);
         append_install_log(log_line);
-        if (download_rom_file_to(state, rom, files[i].name, files[i].url, dst)) ok++;
+        if (download_rom_file_to(state, rom, &files[i], dst)) ok++;
     }
     state->progress_current = 0;
     state->progress_total = 0;
     if (ok == total && total > 0) {
+        rom->is_downloaded = true;
+        rom->is_installed = true;
         snprintf(state->status, sizeof(state->status), "Installed");
         snprintf(state->detail, sizeof(state->detail), "PSX files: %d -> %s/%s", ok, p->path, folder);
         return 1;
@@ -299,7 +321,10 @@ static void download_selected_rom(AppState *state) {
     if (p->install_mode == INSTALL_ADRENALINE_PSP) {
         download_dir = state->psp_download_dir;
         install_dir = state->psp_install_dir;
-    } else if (p->install_mode == INSTALL_FOLDER || p->install_mode == INSTALL_PSX) {
+    } else if (p->install_mode == INSTALL_FOLDER) {
+        download_dir = p->path;
+        install_dir = p->path;
+    } else if (p->install_mode == INSTALL_PSX) {
         platform_cache_dir(p, custom_cache, sizeof(custom_cache));
         download_dir = custom_cache;
         install_dir = p->path;
@@ -344,20 +369,24 @@ static void download_selected_rom(AppState *state) {
     }
     if (c == CURLE_OK && http == 200) {
         if (ends_with_ci(path, ".zip")) {
-            snprintf(state->status, sizeof(state->status), "Installing ZIP");
-            snprintf(state->detail, sizeof(state->detail), "%.255s", path);
-            redraw_now(state);
-            int skipped = 0;
-            int matched = 0;
-            char vita_title_id[16];
-            char first_failed[256];
-            int installed = 0;
-            if (p->install_mode == INSTALL_FOLDER || p->install_mode == INSTALL_PSX) {
-                installed = install_folder_zip(state, path, state->selected_platform, rom, &matched, &skipped, first_failed, sizeof(first_failed));
+            if (p->install_mode == INSTALL_FOLDER) {
+                snprintf(state->status, sizeof(state->status), "Installed");
+                snprintf(state->detail, sizeof(state->detail), "%.255s", path);
             } else {
-                installed = install_zip(state, path, state->selected_platform, &matched, &skipped, vita_title_id, sizeof(vita_title_id), first_failed, sizeof(first_failed));
-            }
-            if (installed > 0) {
+                snprintf(state->status, sizeof(state->status), "Installing ZIP");
+                snprintf(state->detail, sizeof(state->detail), "%.255s", path);
+                redraw_now(state);
+                int skipped = 0;
+                int matched = 0;
+                char vita_title_id[16];
+                char first_failed[256];
+                int installed = 0;
+                if (p->install_mode == INSTALL_PSX) {
+                    installed = install_folder_zip(state, path, state->selected_platform, rom, &matched, &skipped, first_failed, sizeof(first_failed));
+                } else {
+                    installed = install_zip(state, path, state->selected_platform, &matched, &skipped, vita_title_id, sizeof(vita_title_id), first_failed, sizeof(first_failed));
+                }
+                if (installed > 0) {
                 if (p->install_mode == INSTALL_VITA && vita_title_id[0]) {
                     char missing[224];
                     bool app_ok = validate_vita_install(state, vita_title_id, missing, sizeof(missing));
@@ -392,7 +421,7 @@ static void download_selected_rom(AppState *state) {
                     snprintf(state->status, sizeof(state->status), "Installed");
                     snprintf(state->detail, sizeof(state->detail), "Files: %d, skipped: %d", installed, skipped);
                 }
-            } else if (installed == 0) {
+                } else if (installed == 0) {
                 if (matched > 0) {
                     snprintf(state->status, sizeof(state->status), "ZIP extract failed");
                     snprintf(state->detail, sizeof(state->detail), "Matched:%d skipped:%d fail:%.130s", matched, skipped, first_failed[0] ? first_failed : "Check ZIP compression/encryption");
@@ -403,6 +432,7 @@ static void download_selected_rom(AppState *state) {
             } else {
                 snprintf(state->status, sizeof(state->status), "ZIP open failed");
                 snprintf(state->detail, sizeof(state->detail), "Saved: %.220s", path);
+                }
             }
         } else {
             snprintf(state->status, sizeof(state->status), "%s", p->install_mode == INSTALL_VITA ? "Downloaded" : "Installed");

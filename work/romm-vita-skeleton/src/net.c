@@ -84,9 +84,12 @@ static struct curl_slist *setup_headers(CURL *curl, const AppState *state, const
     struct curl_slist *headers = NULL;
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, APP_TITLE "/" ROMM_VITA_VERSION);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 8L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 18L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, 300L);
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     if (state->api_token[0]) {
@@ -109,6 +112,20 @@ static CURLcode http_get(AppState *state, const char *url, char *response, long 
     CURLcode code = curl_easy_perform(curl);
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     curl_easy_cleanup(curl);
+    if (headers) curl_slist_free_all(headers);
+    return code;
+}
+
+static CURLcode http_get_reuse(AppState *state, CURL *curl, const char *url, char *response, long *code_out) {
+    if (!curl) return http_get(state, url, response, code_out);
+    response[0] = '\0';
+    *code_out = 0;
+    curl_easy_reset(curl);
+    struct curl_slist *headers = setup_headers(curl, state, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_string_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+    CURLcode code = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     if (headers) curl_slist_free_all(headers);
     return code;
 }
@@ -136,6 +153,33 @@ static CURLcode http_download(AppState *state, const char *url, const char *path
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, download_progress_cb);
     curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
+    CURLcode code = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
+    curl_easy_cleanup(curl);
+    if (headers) curl_slist_free_all(headers);
+    sceIoClose(fd);
+    return code;
+}
+
+static CURLcode http_download_quiet(AppState *state, const char *url, const char *path, long *code_out) {
+    *code_out = 0;
+    SceUID fd = sceIoOpen(path, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, VITA_FILE_MODE);
+    if (fd < 0) return CURLE_WRITE_ERROR;
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        sceIoClose(fd);
+        return CURLE_FAILED_INIT;
+    }
+    DownloadContext ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.fd = fd;
+    ctx.state = state;
+
+    struct curl_slist *headers = setup_headers(curl, state, url);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_file_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
     CURLcode code = curl_easy_perform(curl);
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     curl_easy_cleanup(curl);

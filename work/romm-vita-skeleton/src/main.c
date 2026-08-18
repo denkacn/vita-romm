@@ -16,6 +16,7 @@ static AppState state;
 
 int main(void) {
     init_defaults(&state);
+    state.games_lock = sceKernelCreateSema("vita_romm_games_lock", 0, 1, 1, NULL);
     sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
     ensure_config(&state);
     init_network(&state);
@@ -75,11 +76,13 @@ int main(void) {
         } else if (!state.busy && state.view == VIEW_GAMES) {
             if ((pressed & SCE_CTRL_LEFT) && state.rom_count > 0) {
                 state.selected_rom = (state.selected_rom + state.rom_count - 1) % state.rom_count;
-                load_current_cover(&state);
+                update_rom_status(&state, state.selected_rom);
+                load_current_cover_from_cache(&state);
             }
             if ((pressed & SCE_CTRL_RIGHT) && state.rom_count > 0) {
                 state.selected_rom = (state.selected_rom + 1) % state.rom_count;
-                load_current_cover(&state);
+                update_rom_status(&state, state.selected_rom);
+                load_current_cover_from_cache(&state);
             }
             if (pressed & SCE_CTRL_CROSS) {
                 draw_ui(&font, &state);
@@ -89,6 +92,9 @@ int main(void) {
                 state.view = VIEW_GAME_LIST;
             }
             if (pressed & SCE_CTRL_CIRCLE) {
+                state.games_worker_generation++;
+                state.games_loading_more = false;
+                state.games_worker_running = false;
                 state.view = VIEW_PLATFORMS;
                 state.status[0] = '\0';
                 snprintf(state.detail, sizeof(state.detail), "Choose platform");
@@ -96,20 +102,27 @@ int main(void) {
         } else if (!state.busy && state.view == VIEW_GAME_LIST) {
             if ((pressed & SCE_CTRL_UP) && state.rom_count > 0) {
                 state.selected_rom = (state.selected_rom + state.rom_count - 1) % state.rom_count;
+                update_rom_status(&state, state.selected_rom);
             }
             if ((pressed & SCE_CTRL_DOWN) && state.rom_count > 0) {
                 state.selected_rom = (state.selected_rom + 1) % state.rom_count;
+                update_rom_status(&state, state.selected_rom);
             }
             if ((pressed & SCE_CTRL_CROSS) && state.rom_count > 0) {
                 state.view = VIEW_GAMES;
-                load_current_cover(&state);
+                update_rom_status(&state, state.selected_rom);
+                load_current_cover_from_cache(&state);
             }
             if (pressed & (SCE_CTRL_CIRCLE | SCE_CTRL_SQUARE)) {
                 state.view = VIEW_GAMES;
-                load_current_cover(&state);
+                update_rom_status(&state, state.selected_rom);
+                load_current_cover_from_cache(&state);
             }
         }
 
+        if (!state.busy && state.view == VIEW_GAMES) {
+            ensure_current_cover_loading(&state);
+        }
         draw_ui(&font, &state);
         sceDisplayWaitVblankStart();
     }

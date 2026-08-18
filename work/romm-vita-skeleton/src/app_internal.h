@@ -25,7 +25,7 @@
 #define APP_TITLE "Vita RomM"
 #define APP_TITLEID "ROMM00001"
 #ifndef ROMM_VITA_VERSION
-#define ROMM_VITA_VERSION "0.5.18"
+#define ROMM_VITA_VERSION "0.5.33"
 #endif
 #define CONFIG_DIR "ux0:data/vita-romm"
 #define CONFIG_PATH CONFIG_DIR "/config.txt"
@@ -113,6 +113,7 @@ typedef enum {
 } PlatformIconIndex;
 
 typedef struct {
+    int id;
     char name[320];
     char url[360];
     long long size_bytes;
@@ -156,6 +157,18 @@ typedef struct {
     int rom_count;
     int selected_platform;
     int selected_rom;
+    int games_loading_platform;
+    int games_loading_id_index;
+    int games_loading_offset;
+    int games_loading_page_size;
+    bool games_loading_more;
+    int games_worker_generation;
+    SceUID games_worker_thread;
+    SceUID games_lock;
+    bool games_worker_running;
+    int cover_worker_generation;
+    SceUID cover_worker_thread;
+    bool cover_worker_running;
     int progress_current;
     int progress_total;
     ViewMode view;

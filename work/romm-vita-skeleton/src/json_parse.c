@@ -68,11 +68,18 @@ static bool extract_string(const char *start, const char *end, const char *field
     if (!key || key >= end) return false;
     const char *colon = strchr(key + strlen(pat), ':');
     if (!colon || colon >= end) return false;
-    const char *q = strchr(colon, '"');
-    if (!q || q >= end) return false;
+    const char *q = colon + 1;
+    while (q < end && (*q == ' ' || *q == '\t' || *q == '\r' || *q == '\n')) q++;
+    if (q >= end || *q != '"') return false;
     q++;
     const char *e = q;
-    while (e < end && *e != '"') e++;
+    bool esc = false;
+    while (e < end) {
+        if (esc) esc = false;
+        else if (*e == '\\') esc = true;
+        else if (*e == '"') break;
+        e++;
+    }
     if (e >= end) return false;
     size_t n = (size_t)(e - q);
     if (n >= dst_size) n = dst_size - 1;
@@ -106,7 +113,10 @@ static bool extract_int64(const char *start, const char *end, const char *field,
     if (!key || key >= end) return false;
     const char *colon = strchr(key + strlen(pat), ':');
     if (!colon || colon >= end) return false;
-    *value = atoll(colon + 1);
+    const char *p = colon + 1;
+    while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) p++;
+    if (p >= end || ((*p < '0' || *p > '9') && *p != '-')) return false;
+    *value = atoll(p);
     return true;
 }
 
@@ -308,9 +318,11 @@ static int parse_rom_file_objects(const char *start, const char *end_limit, RomF
 
         RomFileItem *item = &files[count];
         memset(item, 0, sizeof(*item));
+        item->id = -1;
+        extract_int(cur, end, "id", &item->id);
         snprintf(item->name, sizeof(item->name), "%s", name);
-        const char *url_fields[] = { "download_url", "url", "content_url", "path_download", "fs_path", "file_path" };
-        extract_first_string(cur, end, url_fields, 6, item->url, sizeof(item->url));
+        const char *url_fields[] = { "download_url", "content_url", "path_download", "download_path", "url" };
+        extract_first_string(cur, end, url_fields, 5, item->url, sizeof(item->url));
         item->size_bytes = extract_size_bytes(cur, end);
         count++;
         cur = end + 1;
@@ -402,8 +414,8 @@ static int parse_roms(AppState *state, int platform_index, int expected_platform
             continue;
         }
         rom->id = id;
-        rom->size_bytes = parse_rom_size_from_object(cur, end);
-        const char *file_fields[] = { "file_name", "fs_name", "filename", "path", "name" };
+        rom->size_bytes = extract_size_bytes(cur, end);
+        const char *file_fields[] = { "fs_name", "file_name", "filename", "path", "name" };
         if (!extract_first_string(cur, end, file_fields, 5, rom->file_name, sizeof(rom->file_name))) {
             snprintf(rom->file_name, sizeof(rom->file_name), "%.150s.zip", rom->name);
             sanitize_filename(rom->file_name);

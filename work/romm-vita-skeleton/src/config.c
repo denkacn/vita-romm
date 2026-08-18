@@ -190,6 +190,9 @@ static void configure_platform(AppState *state, PlatformDef *p) {
 static void init_defaults(AppState *state) {
     memset(state, 0, sizeof(*state));
     state->view = VIEW_LOADING;
+    state->games_worker_thread = -1;
+    state->games_lock = -1;
+    state->cover_worker_thread = -1;
     state->auto_refresh_livearea = false;
     snprintf(state->server_url, sizeof(state->server_url), "http://example.com/");
     snprintf(state->vita_install_dir, sizeof(state->vita_install_dir), CONFIG_DIR "/downloads/psvita");

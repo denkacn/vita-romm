@@ -166,6 +166,18 @@ static bool extension_matches_platform(const char *name, const PlatformDef *p) {
     return true;
 }
 
+static bool psx_file_is_supported(const char *name) {
+    return ends_with_ci(name, ".cue") || ends_with_ci(name, ".bin") ||
+        ends_with_ci(name, ".pbp") || ends_with_ci(name, ".chd") ||
+        ends_with_ci(name, ".iso") || ends_with_ci(name, ".img") ||
+        ends_with_ci(name, ".ccd") || ends_with_ci(name, ".sub") ||
+        ends_with_ci(name, ".m3u") || ends_with_ci(name, ".zip");
+}
+
+static bool psx_file_is_direct_install(const char *name) {
+    return psx_file_is_supported(name) && !ends_with_ci(name, ".zip");
+}
+
 static void platform_cache_dir(const PlatformDef *p, char *path, size_t path_size) {
     snprintf(path, path_size, "%s/%s", DOWNLOAD_DIR, p->slug[0] ? p->slug : "custom");
 }
@@ -196,13 +208,7 @@ static void rom_download_path(const AppState *state, const RomItem *rom, int pla
     } else if (p->install_mode == INSTALL_PSX && (ends_with_ci(file, ".cue") || ends_with_ci(file, ".bin"))) {
         snprintf(path, path_size, "%s/%s", p->path, file);
     } else if (p->install_mode == INSTALL_FOLDER) {
-        if (ends_with_ci(file, ".zip")) {
-            char custom_cache[180];
-            platform_cache_dir(p, custom_cache, sizeof(custom_cache));
-            snprintf(path, path_size, "%s/%s", custom_cache, file);
-        } else {
-            snprintf(path, path_size, "%s/%s", p->path, file);
-        }
+        snprintf(path, path_size, "%s/%s", p->path, file);
     } else if (p->install_mode == INSTALL_PSX) {
         char custom_cache[180];
         platform_cache_dir(p, custom_cache, sizeof(custom_cache));
@@ -236,6 +242,74 @@ static bool dir_has_file_with_ext(const char *path, const char *ext) {
     }
     sceIoDclose(dfd);
     return found;
+}
+
+static bool psx_folder_has_playable_content(const AppState *state, const RomItem *rom, int platform_index) {
+    const PlatformDef *p = &state->platforms[platform_index];
+    if (p->install_mode != INSTALL_PSX || !p->path_configured || !p->path[0]) return false;
+
+    char folder[180];
+    char path[340];
+    rom_folder_name(rom, folder, sizeof(folder));
+    snprintf(path, sizeof(path), "%s/%s", p->path, folder);
+    return dir_exists(path) &&
+        (dir_has_file_with_ext(path, ".cue") ||
+         dir_has_file_with_ext(path, ".pbp") ||
+         dir_has_file_with_ext(path, ".chd") ||
+         dir_has_file_with_ext(path, ".iso") ||
+         dir_has_file_with_ext(path, ".img") ||
+         dir_has_file_with_ext(path, ".ccd") ||
+         dir_has_file_with_ext(path, ".m3u"));
+}
+
+static void psx_rom_file_destination(const AppState *state, const RomItem *rom, const RomFileItem *file_item, int platform_index, char *path, size_t path_size) {
+    const PlatformDef *p = &state->platforms[platform_index];
+    char file[180];
+    snprintf(file, sizeof(file), "%s", basename_ptr(file_item->name));
+    sanitize_filename(file);
+
+    if (ends_with_ci(file, ".pbp")) {
+        char folder[80];
+        make_folder_name_from_file(file, folder, sizeof(folder));
+        snprintf(path, path_size, "%s/%s/EBOOT.PBP", state->psx_pbp_dir, folder);
+    } else if (ends_with_ci(file, ".zip")) {
+        char custom_cache[180];
+        platform_cache_dir(p, custom_cache, sizeof(custom_cache));
+        snprintf(path, path_size, "%s/%s", custom_cache, file);
+    } else {
+        char folder[180];
+        rom_folder_name(rom, folder, sizeof(folder));
+        snprintf(path, path_size, "%s/%s/%s", p->path, folder, file);
+    }
+}
+
+static bool psx_expected_files_status(AppState *state, RomItem *rom, int platform_index, bool installed_mode) {
+    RomFileItem files[32];
+    int count = load_rom_file_list(state, rom, files, 32);
+    int expected = 0;
+    int present = 0;
+    bool has_archive = false;
+
+    for (int i = 0; i < count; i++) {
+        if (!psx_file_is_supported(files[i].name)) continue;
+        if (ends_with_ci(files[i].name, ".zip")) has_archive = true;
+        if (installed_mode && !psx_file_is_direct_install(files[i].name)) continue;
+
+        char path[384];
+        psx_rom_file_destination(state, rom, &files[i], platform_index, path, sizeof(path));
+        expected++;
+        if (usable_file_exists(path)) present++;
+    }
+
+    if (expected > 0) {
+        char log_line[300];
+        snprintf(log_line, sizeof(log_line), "PSX status rom=%d mode=%s present=%d expected=%d archives=%d", rom->id, installed_mode ? "installed" : "downloaded", present, expected, has_archive ? 1 : 0);
+        append_install_log(log_line);
+        return present == expected;
+    }
+
+    if (installed_mode && has_archive) return psx_folder_has_playable_content(state, rom, platform_index);
+    return false;
 }
 
 static bool extract_title_id_from_text(const char *text, char *dst, size_t dst_size) {
@@ -283,13 +357,17 @@ static bool vita_title_id_for_rom(const AppState *state, const RomItem *rom, int
     return true;
 }
 
-static bool rom_is_downloaded(const AppState *state, const RomItem *rom, int platform_index) {
+static bool rom_is_downloaded(AppState *state, RomItem *rom, int platform_index) {
+    if (state->platforms[platform_index].install_mode == INSTALL_PSX) {
+        return psx_expected_files_status(state, rom, platform_index, false) ||
+            psx_folder_has_playable_content(state, rom, platform_index);
+    }
     char path[340];
     rom_download_path(state, rom, platform_index, path, sizeof(path));
     return usable_file_exists(path);
 }
 
-static bool rom_is_installed(const AppState *state, const RomItem *rom, int platform_index) {
+static bool rom_is_installed(AppState *state, RomItem *rom, int platform_index) {
     const PlatformDef *p = &state->platforms[platform_index];
     if (p->install_mode == INSTALL_VITA) {
         char title_id[16];
@@ -299,6 +377,10 @@ static bool rom_is_installed(const AppState *state, const RomItem *rom, int plat
         return usable_file_exists(path);
     }
     if (p->support_level == SUPPORT_PATH_REQUIRED || !p->path_configured || !p->path[0]) return false;
+    if (p->install_mode == INSTALL_PSX) {
+        return psx_expected_files_status(state, rom, platform_index, true) ||
+            psx_folder_has_playable_content(state, rom, platform_index);
+    }
 
     char file[180];
     snprintf(file, sizeof(file), "%s", rom->file_name[0] ? rom->file_name : rom->name);
@@ -315,15 +397,12 @@ static bool rom_is_installed(const AppState *state, const RomItem *rom, int plat
         snprintf(path, sizeof(path), "%s/%s/EBOOT.PBP", p->install_mode == INSTALL_PSX ? state->psx_pbp_dir : state->psp_game_dir, folder);
         return usable_file_exists(path);
     }
-    if (p->install_mode == INSTALL_PSX && (ends_with_ci(file, ".cue") || ends_with_ci(file, ".bin"))) {
+    if (p->install_mode == INSTALL_PSX && psx_file_is_direct_install(file)) {
         char path[340];
         snprintf(path, sizeof(path), "%s/%s", p->path, file);
         if (usable_file_exists(path)) return true;
 
-        char folder[180];
-        rom_folder_name(rom, folder, sizeof(folder));
-        snprintf(path, sizeof(path), "%s/%s", p->path, folder);
-        return dir_exists(path) && dir_has_file_with_ext(path, ".cue") && dir_has_file_with_ext(path, ".bin");
+        return psx_folder_has_playable_content(state, rom, platform_index);
     }
     if (p->install_mode == INSTALL_FOLDER) {
         char path[340];
@@ -370,11 +449,7 @@ static bool rom_is_installed(const AppState *state, const RomItem *rom, int plat
     }
     zip_close(archive);
     if (p->install_mode == INSTALL_PSX && psx_cue && psx_bin) {
-        char folder[180];
-        char path[340];
-        rom_folder_name(rom, folder, sizeof(folder));
-        snprintf(path, sizeof(path), "%s/%s", p->path, folder);
-        return dir_exists(path) && dir_has_file_with_ext(path, ".cue") && dir_has_file_with_ext(path, ".bin");
+        return psx_folder_has_playable_content(state, rom, platform_index);
     }
     if (installed) return true;
     return false;
