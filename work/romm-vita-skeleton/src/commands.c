@@ -3,6 +3,7 @@
 #include "installer.h"
 #include "library_loader.h"
 #include "livearea.h"
+#include "romm_client.h"
 #include "ui.h"
 
 void command_select_platform(AppState *state, int delta) {
@@ -24,8 +25,13 @@ void command_refresh_livearea(AppState *state, BitmapFont *font) {
 void command_browse_game(AppState *state, int delta) {
     if (state->library.count <= 0) return;
     state->library.selected = (state->library.selected + state->library.count + delta) % state->library.count;
-    update_rom_status(state, state->library.selected);
     load_current_cover_from_cache(state);
+}
+
+void command_refresh_game_cover(AppState *state, BitmapFont *font) {
+    (void)font;
+    if (state->library.count <= 0) return;
+    refresh_current_cover(state);
 }
 
 void command_open_game_list(AppState *state) {
@@ -44,11 +50,11 @@ void command_back_to_platforms(AppState *state) {
 void command_move_game_list(AppState *state, int delta) {
     if (state->library.count <= 0) return;
     state->library.selected = (state->library.selected + state->library.count + delta) % state->library.count;
-    update_rom_status(state, state->library.selected);
 }
 
 void command_select_game_from_list(AppState *state) {
     state->view = VIEW_GAMES;
+    load_rom_metadata_from_detail(state, &state->library.roms[state->library.selected]);
     update_rom_status(state, state->library.selected);
     load_current_cover_from_cache(state);
 }

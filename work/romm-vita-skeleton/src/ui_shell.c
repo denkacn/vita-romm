@@ -54,9 +54,11 @@ void ui_draw_status_footer(BitmapFont *font, const AppState *state) {
         ui_draw_button_hint(font, 216, 500, "SQ", "List", COLOR_ACCENT);
         if (p->support_level != SUPPORT_PATH_REQUIRED) {
             ui_draw_button_hint(font, 350, 500, "X", "Install", COLOR_GOOD);
-            ui_draw_button_hint(font, 502, 500, "O", "Back", COLOR_WARN);
+            ui_draw_button_hint(font, 502, 500, "SEL", "Poster", COLOR_ACCENT);
+            ui_draw_button_hint(font, 676, 500, "O", "Back", COLOR_WARN);
         } else {
-            ui_draw_button_hint(font, 350, 500, "O", "Back", COLOR_WARN);
+            ui_draw_button_hint(font, 350, 500, "SEL", "Poster", COLOR_ACCENT);
+            ui_draw_button_hint(font, 524, 500, "O", "Back", COLOR_WARN);
         }
     } else if (state->view == VIEW_GAME_LIST) {
         ui_draw_button_hint(font, 42, 500, "U/D", "Move", COLOR_ACCENT);

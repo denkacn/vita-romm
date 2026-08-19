@@ -5,6 +5,7 @@
 
 void load_current_cover_from_cache(AppState *state);
 void ensure_current_cover_loading(AppState *state);
+void refresh_current_cover(AppState *state);
 void load_cached_platform_icon(AppState *state, PlatformDef *platform);
 
 #endif

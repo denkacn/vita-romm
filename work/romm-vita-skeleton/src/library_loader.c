@@ -204,6 +204,9 @@ static int games_worker_entry(SceSize args_size, void *argp) {
 
             memset(page_state, 0, sizeof(*page_state));
             int added = parse_rom_items(response, p.slug, -1, page_state->library.roms, MAX_ROMS);
+            if (offset == 0 && added > 0) {
+                load_rom_metadata_from_detail(state, &page_state->library.roms[0]);
+            }
             page_state->library.count = added;
             unsigned long long t2 = vita_now_ms();
             int total = extract_collection_count(response);

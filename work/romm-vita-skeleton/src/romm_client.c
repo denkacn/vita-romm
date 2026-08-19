@@ -90,30 +90,35 @@ bool load_rom_metadata_from_detail(AppState *state, RomItem *rom) {
     char api_path[64];
     char url[360];
     long http = 0;
+    char *response = (char *)malloc(HTTP_RESPONSE_MAX + 1);
+    if (!response) return false;
 
     snprintf(api_path, sizeof(api_path), "/api/roms/%d", rom->id);
     build_api_url(url, sizeof(url), state, api_path);
-    CURLcode c = http_get(state, url, http_response, &http);
+    CURLcode c = http_get(state, url, response, &http);
     if (c != CURLE_OK || http != 200) {
         char detail[220];
         snprintf(detail, sizeof(detail), "rom=%d http=%ld curl=%d", rom->id, http, c);
         log_event("rom detail failed", detail);
+        free(response);
         return false;
     }
 
-    long long size = parse_rom_total_size(http_response);
+    long long size = parse_rom_total_size(response);
     if (size > 0) rom->size_bytes = size;
 
-    if (find_cover_url(http_response, http_response + strlen(http_response), rom->cover_url, sizeof(rom->cover_url))) {
+    if (find_cover_url(response, response + strlen(response), rom->cover_url, sizeof(rom->cover_url))) {
         char detail[320];
         snprintf(detail, sizeof(detail), "rom=%d size=%lld url=%.210s", rom->id, rom->size_bytes, rom->cover_url);
         log_event("rom detail loaded", detail);
+        free(response);
         return true;
     }
 
     char detail[180];
     snprintf(detail, sizeof(detail), "rom=%d size=%lld name=%.90s", rom->id, rom->size_bytes, rom->name);
     log_event("rom cover missing", detail);
+    free(response);
     return size > 0;
 }
 

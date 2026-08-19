@@ -158,6 +158,32 @@ static void start_current_cover_worker(AppState *state) {
     }
 }
 
+void refresh_current_cover(AppState *state) {
+    if (state->library.count <= 0 || state->library.selected < 0 || state->library.selected >= state->library.count) return;
+    if (state->cover_worker.running) {
+        snprintf(state->status, sizeof(state->status), "Poster is already loading");
+        return;
+    }
+    RomItem *rom = &state->library.roms[state->library.selected];
+
+    state->cover_worker.generation++;
+
+    if (rom->cover) {
+        vita2d_free_texture(rom->cover);
+        rom->cover = NULL;
+    }
+    rom->cover_url[0] = '\0';
+    remove_path_recursive(rom->cover_path);
+
+    char detail[220];
+    snprintf(detail, sizeof(detail), "rom=%d path=%s", rom->id, rom->cover_path);
+    log_event("cover refresh requested", detail);
+    snprintf(state->status, sizeof(state->status), "Refreshing poster");
+    snprintf(state->detail, sizeof(state->detail), "%s", rom->name);
+
+    start_current_cover_worker(state);
+}
+
 void ensure_current_cover_loading(AppState *state) {
     if (state->library.count <= 0 || state->library.selected < 0 || state->library.selected >= state->library.count) return;
     RomItem *rom = &state->library.roms[state->library.selected];

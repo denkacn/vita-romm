@@ -12,6 +12,7 @@ static void input_games(AppState *state, BitmapFont *font, unsigned int pressed)
     if (pressed & SCE_CTRL_LEFT) command_browse_game(state, -1);
     if (pressed & SCE_CTRL_RIGHT) command_browse_game(state, 1);
     if (pressed & SCE_CTRL_CROSS) command_download_selected(state, font);
+    if (pressed & SCE_CTRL_SELECT) command_refresh_game_cover(state, font);
     if (pressed & SCE_CTRL_SQUARE) command_open_game_list(state);
     if (pressed & SCE_CTRL_CIRCLE) command_back_to_platforms(state);
 }
