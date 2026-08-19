@@ -6,6 +6,23 @@
 #include "romm_parser.h"
 #include "vita_fs.h"
 
+static RomItem *current_rom(AppState *state) {
+    if (state->library.count <= 0) return NULL;
+    if (state->library.selected < 0 || state->library.selected >= state->library.count) return NULL;
+    return &state->library.roms[state->library.selected];
+}
+
+static bool file_has_content(const char *path) {
+    SceIoStat st;
+    return sceIoGetstat(path, &st) >= 0 && st.st_size > 0;
+}
+
+static vita2d_texture *load_texture_file(const char *path) {
+    vita2d_texture *texture = vita2d_load_PNG_file(path);
+    if (!texture) texture = vita2d_load_JPEG_file(path);
+    return texture;
+}
+
 void load_cached_platform_icon(AppState *state, PlatformDef *p) {
     if (p->known || p->icon || !p->slug[0]) return;
     const char *exts[] = { "png", "jpg", "jpeg" };
@@ -39,14 +56,12 @@ void load_cached_platform_icon(AppState *state, PlatformDef *p) {
 }
 
 void load_current_cover_from_cache(AppState *state) {
-    if (state->library.count <= 0) return;
-    RomItem *rom = &state->library.roms[state->library.selected];
+    RomItem *rom = current_rom(state);
+    if (!rom) return;
     if (rom->cover) return;
 
-    SceIoStat st;
-    if (sceIoGetstat(rom->cover_path, &st) < 0 || st.st_size <= 0) return;
-    rom->cover = vita2d_load_PNG_file(rom->cover_path);
-    if (!rom->cover) rom->cover = vita2d_load_JPEG_file(rom->cover_path);
+    if (!file_has_content(rom->cover_path)) return;
+    rom->cover = load_texture_file(rom->cover_path);
     if (!rom->cover) sceIoRemove(rom->cover_path);
 }
 
@@ -55,6 +70,66 @@ typedef struct {
     int rom_index;
     CoverJob job;
 } CoverWorkerArgs;
+
+static void finish_cover_worker(AppState *state, int generation) {
+    lock_games(state);
+    if (generation == state->cover_worker.generation) state->cover_worker.running = false;
+    unlock_games(state);
+}
+
+static bool fetch_cover_url(AppState *state, const CoverJob *job, int rom_index, char *cover_url, size_t cover_url_size) {
+    char *response = (char *)malloc(HTTP_RESPONSE_MAX + 1);
+    if (!response) return false;
+
+    char api_path[64];
+    char url[360];
+    long http = 0;
+    snprintf(api_path, sizeof(api_path), "/api/roms/%d", job->rom_id);
+    build_api_url(url, sizeof(url), state, api_path);
+
+    CURLcode c = http_get(state, url, response, &http);
+    bool found = c == CURLE_OK && http == 200 &&
+        find_cover_url(response, response + strlen(response), cover_url, cover_url_size);
+
+    if (found) {
+        lock_games(state);
+        if (job->generation == state->cover_worker.generation &&
+            rom_index >= 0 && rom_index < state->library.count &&
+            state->library.roms[rom_index].id == job->rom_id) {
+            snprintf(state->library.roms[rom_index].cover_url,
+                sizeof(state->library.roms[rom_index].cover_url), "%s", cover_url);
+        }
+        unlock_games(state);
+    }
+
+    free(response);
+    return found;
+}
+
+static void download_cover(AppState *state, const CoverJob *job, const char *cover_url, const char *cover_path) {
+    if (!cover_url[0] || file_has_content(cover_path)) return;
+
+    char url[420];
+    char part_path[192];
+    long http = 0;
+    make_absolute_url(url, sizeof(url), state, cover_url);
+    snprintf(part_path, sizeof(part_path), "%s.part", cover_path);
+
+    remove_path_recursive(part_path);
+    mkdir_parent_for_file(cover_path);
+
+    CURLcode c = http_download_quiet(state, url, part_path, &http);
+    if (c == CURLE_OK && http == 200) {
+        remove_path_recursive(cover_path);
+        if (sceIoRename(part_path, cover_path) < 0) remove_path_recursive(part_path);
+        return;
+    }
+
+    remove_path_recursive(part_path);
+    char detail[420];
+    snprintf(detail, sizeof(detail), "rom=%d http=%ld curl=%d url=%.240s", job->rom_id, http, c, url);
+    log_event("cover failed", detail);
+}
 
 static int cover_worker_entry(SceSize args_size, void *argp) {
     (void)args_size;
@@ -69,66 +144,23 @@ static int cover_worker_entry(SceSize args_size, void *argp) {
     snprintf(cover_url, sizeof(cover_url), "%s", job.cover_url);
     snprintf(cover_path, sizeof(cover_path), "%s", job.cache_path);
 
-    char *response = NULL;
     if (!cover_url[0]) {
-        response = (char *)malloc(HTTP_RESPONSE_MAX + 1);
-        if (response) {
-            char api_path[64];
-            char url[360];
-            long http = 0;
-            snprintf(api_path, sizeof(api_path), "/api/roms/%d", job.rom_id);
-            build_api_url(url, sizeof(url), state, api_path);
-            CURLcode c = http_get(state, url, response, &http);
-            if (c == CURLE_OK && http == 200) {
-                find_cover_url(response, response + strlen(response), cover_url, sizeof(cover_url));
-                lock_games(state);
-                if (job.generation == state->cover_worker.generation &&
-                    args->rom_index >= 0 && args->rom_index < state->library.count &&
-                    state->library.roms[args->rom_index].id == job.rom_id &&
-                    cover_url[0]) {
-                    snprintf(state->library.roms[args->rom_index].cover_url, sizeof(state->library.roms[args->rom_index].cover_url), "%s", cover_url);
-                }
-                unlock_games(state);
-            }
-        }
+        fetch_cover_url(state, &job, args->rom_index, cover_url, sizeof(cover_url));
     }
 
-    SceIoStat st;
-    if (cover_url[0] && sceIoGetstat(cover_path, &st) < 0) {
-        char url[420];
-        char part_path[192];
-        long http = 0;
-        make_absolute_url(url, sizeof(url), state, cover_url);
-        snprintf(part_path, sizeof(part_path), "%s.part", cover_path);
-        remove_path_recursive(part_path);
-        mkdir_parent_for_file(cover_path);
-        CURLcode c = http_download_quiet(state, url, part_path, &http);
-        if (c == CURLE_OK && http == 200) {
-            remove_path_recursive(cover_path);
-            if (sceIoRename(part_path, cover_path) < 0) remove_path_recursive(part_path);
-        } else {
-            remove_path_recursive(part_path);
-            char detail[420];
-            snprintf(detail, sizeof(detail), "rom=%d http=%ld curl=%d url=%.240s", job.rom_id, http, c, url);
-            log_event("cover failed", detail);
-        }
-    }
+    download_cover(state, &job, cover_url, cover_path);
 
-    lock_games(state);
-    if (job.generation == state->cover_worker.generation) state->cover_worker.running = false;
-    unlock_games(state);
-    if (response) free(response);
+    finish_cover_worker(state, job.generation);
     free(args);
     return 0;
 }
 
 static void start_current_cover_worker(AppState *state) {
-    if (state->library.count <= 0 || state->library.selected < 0 || state->library.selected >= state->library.count) return;
-    RomItem *rom = &state->library.roms[state->library.selected];
+    RomItem *rom = current_rom(state);
+    if (!rom) return;
     if (rom->cover || state->cover_worker.running) return;
 
-    SceIoStat st;
-    if (sceIoGetstat(rom->cover_path, &st) >= 0 && st.st_size > 0) return;
+    if (file_has_content(rom->cover_path)) return;
 
     CoverWorkerArgs *args = (CoverWorkerArgs *)malloc(sizeof(CoverWorkerArgs));
     if (!args) return;
@@ -159,12 +191,12 @@ static void start_current_cover_worker(AppState *state) {
 }
 
 void refresh_current_cover(AppState *state) {
-    if (state->library.count <= 0 || state->library.selected < 0 || state->library.selected >= state->library.count) return;
+    RomItem *rom = current_rom(state);
+    if (!rom) return;
     if (state->cover_worker.running) {
         snprintf(state->status, sizeof(state->status), "Poster is already loading");
         return;
     }
-    RomItem *rom = &state->library.roms[state->library.selected];
 
     state->cover_worker.generation++;
 
@@ -185,8 +217,8 @@ void refresh_current_cover(AppState *state) {
 }
 
 void ensure_current_cover_loading(AppState *state) {
-    if (state->library.count <= 0 || state->library.selected < 0 || state->library.selected >= state->library.count) return;
-    RomItem *rom = &state->library.roms[state->library.selected];
+    RomItem *rom = current_rom(state);
+    if (!rom) return;
     if (!rom->cover) load_current_cover_from_cache(state);
     if (!rom->cover) start_current_cover_worker(state);
 }

@@ -6,6 +6,20 @@
 #include "romm_client.h"
 #include "ui.h"
 
+static bool has_games(const AppState *state) {
+    return state->library.count > 0;
+}
+
+static RomItem *selected_rom(AppState *state) {
+    if (!has_games(state)) return NULL;
+    return &state->library.roms[state->library.selected];
+}
+
+static void select_rom(AppState *state, int delta) {
+    if (!has_games(state)) return;
+    state->library.selected = (state->library.selected + state->library.count + delta) % state->library.count;
+}
+
 void command_select_platform(AppState *state, int delta) {
     if (state->catalog.count <= 0) return;
     state->catalog.selected = (state->catalog.selected + state->catalog.count + delta) % state->catalog.count;
@@ -23,14 +37,13 @@ void command_refresh_livearea(AppState *state, BitmapFont *font) {
 }
 
 void command_browse_game(AppState *state, int delta) {
-    if (state->library.count <= 0) return;
-    state->library.selected = (state->library.selected + state->library.count + delta) % state->library.count;
+    select_rom(state, delta);
     load_current_cover_from_cache(state);
 }
 
 void command_refresh_game_cover(AppState *state, BitmapFont *font) {
     (void)font;
-    if (state->library.count <= 0) return;
+    if (!has_games(state)) return;
     refresh_current_cover(state);
 }
 
@@ -48,13 +61,15 @@ void command_back_to_platforms(AppState *state) {
 }
 
 void command_move_game_list(AppState *state, int delta) {
-    if (state->library.count <= 0) return;
-    state->library.selected = (state->library.selected + state->library.count + delta) % state->library.count;
+    select_rom(state, delta);
 }
 
 void command_select_game_from_list(AppState *state) {
+    RomItem *rom = selected_rom(state);
+    if (!rom) return;
+
     state->view = VIEW_GAMES;
-    load_rom_metadata_from_detail(state, &state->library.roms[state->library.selected]);
+    load_rom_metadata_from_detail(state, rom);
     update_rom_status(state, state->library.selected);
     load_current_cover_from_cache(state);
 }

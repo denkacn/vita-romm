@@ -120,6 +120,10 @@ typedef struct {
     int generation;
 } GameWorkerArgs;
 
+enum {
+    ROMM_PAGE_SIZE = 50
+};
+
 void lock_games(AppState *state) {
     if (state->library_worker.lock >= 0) sceKernelWaitSema(state->library_worker.lock, 1, NULL);
 }
@@ -130,6 +134,28 @@ void unlock_games(AppState *state) {
 
 static bool worker_generation_alive(AppState *state, int generation) {
     return generation == state->library_worker.generation;
+}
+
+static void fail_games_worker(AppState *state, int generation, const char *message) {
+    lock_games(state);
+    if (worker_generation_alive(state, generation)) {
+        snprintf(state->status, sizeof(state->status), "ROM list error");
+        snprintf(state->detail, sizeof(state->detail), "%s", message);
+        state->library_worker.running = false;
+        state->library_worker.loading_more = false;
+    }
+    unlock_games(state);
+}
+
+static void finish_games_worker(AppState *state, int generation, const PlatformDef *platform) {
+    lock_games(state);
+    if (worker_generation_alive(state, generation)) {
+        state->library_worker.running = false;
+        state->library_worker.loading_more = false;
+        snprintf(state->status, sizeof(state->status), "%s games: %d", platform->label, state->library.count);
+        set_platform_game_detail(state, platform);
+    }
+    unlock_games(state);
 }
 
 static void append_worker_roms(AppState *state, int generation, const PlatformDef *p, const RomItem *items, int count, int total_hint) {
@@ -156,30 +182,15 @@ static int games_worker_entry(SceSize args_size, void *argp) {
     AppState *state = args->state;
     PlatformDef p = args->platform;
     int generation = args->generation;
-    int page_size = 50;
     char *response = (char *)malloc(HTTP_RESPONSE_MAX + 1);
     if (!response) {
-        lock_games(state);
-        if (worker_generation_alive(state, generation)) {
-            snprintf(state->status, sizeof(state->status), "ROM list error");
-            snprintf(state->detail, sizeof(state->detail), "Out of memory");
-            state->library_worker.running = false;
-            state->library_worker.loading_more = false;
-        }
-        unlock_games(state);
+        fail_games_worker(state, generation, "Out of memory");
         free(args);
         return 0;
     }
-    AppState *page_state = (AppState *)malloc(sizeof(AppState));
-    if (!page_state) {
-        lock_games(state);
-        if (worker_generation_alive(state, generation)) {
-            snprintf(state->status, sizeof(state->status), "ROM list error");
-            snprintf(state->detail, sizeof(state->detail), "Out of memory");
-            state->library_worker.running = false;
-            state->library_worker.loading_more = false;
-        }
-        unlock_games(state);
+    AppState *page = (AppState *)malloc(sizeof(AppState));
+    if (!page) {
+        fail_games_worker(state, generation, "Out of memory");
         free(response);
         free(args);
         return 0;
@@ -193,7 +204,7 @@ static int games_worker_entry(SceSize args_size, void *argp) {
         while (worker_generation_alive(state, generation)) {
             long http = 0;
             unsigned long long t0 = vita_now_ms();
-            CURLcode c = romm_get_platform_roms_page_fast(state, page_curl, platform_id, page_size, offset, response, &http);
+            CURLcode c = romm_get_platform_roms_page_fast(state, page_curl, platform_id, ROMM_PAGE_SIZE, offset, response, &http);
             unsigned long long t1 = vita_now_ms();
             if (c != CURLE_OK || http != 200) {
                 char detail[240];
@@ -202,38 +213,31 @@ static int games_worker_entry(SceSize args_size, void *argp) {
                 break;
             }
 
-            memset(page_state, 0, sizeof(*page_state));
-            int added = parse_rom_items(response, p.slug, -1, page_state->library.roms, MAX_ROMS);
+            memset(page, 0, sizeof(*page));
+            int added = parse_rom_items(response, p.slug, -1, page->library.roms, MAX_ROMS);
             if (offset == 0 && added > 0) {
-                load_rom_metadata_from_detail(state, &page_state->library.roms[0]);
+                load_rom_metadata_from_detail(state, &page->library.roms[0]);
             }
-            page_state->library.count = added;
+            page->library.count = added;
             unsigned long long t2 = vita_now_ms();
             int total = extract_collection_count(response);
-            append_worker_roms(state, generation, &p, page_state->library.roms, page_state->library.count, total);
+            append_worker_roms(state, generation, &p, page->library.roms, page->library.count, total);
             unsigned long long t3 = vita_now_ms();
 
             char detail[260];
             snprintf(detail, sizeof(detail), "slug=%s id=%d offset=%d added=%d total=%d bytes=%u http_ms=%llu parse_ms=%llu append_ms=%llu", p.slug, platform_id, offset, added, total, (unsigned int)strlen(response), t1 - t0, t2 - t1, t3 - t2);
             log_event("page loaded", detail);
 
-            if (added <= 0 || added < page_size || (total > 0 && offset + page_size >= total)) break;
-            offset += page_size;
+            if (added <= 0 || added < ROMM_PAGE_SIZE || (total > 0 && offset + ROMM_PAGE_SIZE >= total)) break;
+            offset += ROMM_PAGE_SIZE;
         }
     }
 
     if (page_curl) curl_easy_cleanup(page_curl);
 
-    lock_games(state);
-    if (worker_generation_alive(state, generation)) {
-        state->library_worker.running = false;
-        state->library_worker.loading_more = false;
-        snprintf(state->status, sizeof(state->status), "%s games: %d", p.label, state->library.count);
-        set_platform_game_detail(state, &p);
-    }
-    unlock_games(state);
+    finish_games_worker(state, generation, &p);
 
-    free(page_state);
+    free(page);
     free(response);
     free(args);
     return 0;
@@ -246,7 +250,7 @@ static void start_games_worker(AppState *state, int platform_index, const Platfo
     state->library_worker.platform = platform_index;
     state->library_worker.id_index = 0;
     state->library_worker.offset = 0;
-    state->library_worker.page_size = 50;
+    state->library_worker.page_size = ROMM_PAGE_SIZE;
 
     GameWorkerArgs *args = (GameWorkerArgs *)malloc(sizeof(GameWorkerArgs));
     if (!args) {
