@@ -72,6 +72,112 @@ For retro platforms, Vita RomM downloads files into the folder you configure. Yo
 
 On a trusted local network, HTTP is usually easier than HTTPS on PS Vita because certificate handling can be fragile on the console.
 
+## Configuration
+
+Vita RomM stores all user settings in one file:
+
+```text
+ux0:data/vita-romm/config.txt
+```
+
+The app creates a default config on first launch. You can edit it directly in VitaShell, copy it over FTP/USB, or use the included [config.example.txt](config.example.txt) as a starting point.
+
+Your real config should never be shared publicly because it contains your RomM API token.
+
+### Required Settings
+
+```text
+server_url=http://your-romm-server.local/
+api_token=rmm_your_token_here
+```
+
+`server_url` is the base URL of your RomM server. Use a URL that your Vita can reach on the same network.
+
+Good examples:
+
+```text
+server_url=http://192.168.0.10:8080/
+server_url=http://romm.local/
+```
+
+`api_token` is a RomM client token. You can create it in RomM from your user/account settings. The token usually starts with `rmm_`.
+
+### PS Vita Paths
+
+These paths control where Vita game archives are downloaded and where extracted content is installed:
+
+```text
+psvita_download_dir=ux0:data/vita-romm/downloads/psvita
+psvita_app_dir=ux0:app
+psvita_patch_dir=ux0:patch
+psvita_repatch_dir=ux0:rePatch
+psvita_addcont_dir=ux0:addcont
+psvita_license_dir=ux0:license
+```
+
+Most users should keep these defaults. After installing a PS Vita game, run Refresh LiveArea from Vita RomM or VitaShell so the game bubble appears.
+
+### PSP And Adrenaline Paths
+
+These paths are used for PSP games:
+
+```text
+psp_install_dir=ux0:pspemu/ISO
+psp_game_dir=ux0:pspemu/PSP/GAME
+psp_download_dir=ux0:data/vita-romm/downloads/psp
+```
+
+`.iso` and `.cso` files go to `psp_install_dir`. `EBOOT.PBP` games go under `psp_game_dir`.
+
+### PSX Paths
+
+PSX has two supported install styles:
+
+```text
+platform.psx.path=ux0:data/vita-romm/roms/psx
+platform.psx.pbp_path=ux0:pspemu/PSP/GAME
+```
+
+Use `platform.psx.path` for `.bin/.cue` games. Vita RomM keeps each PSX game in its own folder because `.cue` files must reference the matching `.bin` files by name.
+
+Use `platform.psx.pbp_path` for PSX `EBOOT.PBP` games that you want to run through Adrenaline.
+
+### Retro Platform Paths
+
+Folder-download platforms need a target path in the config:
+
+```text
+platform.gba.path=ux0:data/vita-romm/roms/gba
+platform.gb.path=ux0:data/vita-romm/roms/gb
+platform.gbc.path=ux0:data/vita-romm/roms/gbc
+platform.nes.path=ux0:data/vita-romm/roms/nes
+platform.snes.path=ux0:data/vita-romm/roms/snes
+platform.genesis.path=ux0:data/vita-romm/roms/genesis
+platform.n64.path=ux0:data/vita-romm/roms/n64
+```
+
+You can point these paths to your existing RetroArch folders instead. For example:
+
+```text
+platform.snes.path=ux0:data/retroarch/roms/snes
+```
+
+If Vita RomM sees a RomM platform but no path is configured for it, the app will show that the platform needs a download path.
+
+### Custom Platforms
+
+You can add a custom RomM platform by using its RomM slug:
+
+```text
+platform.<slug>.path=ux0:data/retroarch/roms/<slug>
+```
+
+Custom platforms are treated as untested folder-download platforms. Vita RomM downloads the file, but you are responsible for using the correct emulator/core.
+
+### Full Example
+
+See [config.example.txt](config.example.txt) for a complete config template.
+
 ## Controls
 
 Platform screen:

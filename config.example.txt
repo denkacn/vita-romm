@@ -1,0 +1,51 @@
+# Vita RomM example config
+#
+# Copy this file to:
+# ux0:data/vita-romm/config.txt
+#
+# Do not share your real config publicly because it contains your RomM token.
+
+# Required RomM connection settings.
+# Use a URL that your Vita can reach on your local network.
+server_url=http://your-romm-server.local/
+api_token=rmm_your_token_here
+
+# PS Vita download/install paths.
+# Most users should keep these defaults.
+psvita_download_dir=ux0:data/vita-romm/downloads/psvita
+psvita_app_dir=ux0:app
+psvita_patch_dir=ux0:patch
+psvita_repatch_dir=ux0:rePatch
+psvita_addcont_dir=ux0:addcont
+psvita_license_dir=ux0:license
+
+# PSP / Adrenaline paths.
+# ISO/CSO files go to psp_install_dir.
+# EBOOT.PBP games go under psp_game_dir.
+psp_install_dir=ux0:pspemu/ISO
+psp_game_dir=ux0:pspemu/PSP/GAME
+psp_download_dir=ux0:data/vita-romm/downloads/psp
+
+# PSX paths.
+# .bin/.cue sets go to platform.psx.path.
+# PSX EBOOT.PBP games go to platform.psx.pbp_path for Adrenaline.
+platform.psx.path=ux0:data/vita-romm/roms/psx
+platform.psx.pbp_path=ux0:pspemu/PSP/GAME
+
+# Verified retro folder-download platforms.
+# You can change these to your existing RetroArch ROM folders.
+platform.gba.path=ux0:data/vita-romm/roms/gba
+platform.gb.path=ux0:data/vita-romm/roms/gb
+platform.gbc.path=ux0:data/vita-romm/roms/gbc
+platform.nes.path=ux0:data/vita-romm/roms/nes
+platform.snes.path=ux0:data/vita-romm/roms/snes
+platform.genesis.path=ux0:data/vita-romm/roms/genesis
+
+# Experimental folder-download platform.
+# N64 support depends on your emulator/core setup.
+platform.n64.path=ux0:data/vita-romm/roms/n64
+
+# Optional.
+# 0 = manual Refresh LiveArea only.
+# 1 = try automatic Refresh LiveArea after PS Vita installs.
+auto_refresh_livearea=0
