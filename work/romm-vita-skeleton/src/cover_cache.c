@@ -77,7 +77,7 @@ static void finish_cover_worker(AppState *state, int generation) {
     unlock_games(state);
 }
 
-static bool fetch_cover_url(AppState *state, const CoverJob *job, int rom_index, char *cover_url, size_t cover_url_size) {
+static bool fetch_rom_detail_metadata(AppState *state, const CoverJob *job, int rom_index, char *cover_url, size_t cover_url_size) {
     char *response = (char *)malloc(HTTP_RESPONSE_MAX + 1);
     if (!response) return false;
 
@@ -88,22 +88,32 @@ static bool fetch_cover_url(AppState *state, const CoverJob *job, int rom_index,
     build_api_url(url, sizeof(url), state, api_path);
 
     CURLcode c = http_get(state, url, response, &http);
-    bool found = c == CURLE_OK && http == 200 &&
-        find_cover_url(response, response + strlen(response), cover_url, cover_url_size);
+    bool ok = c == CURLE_OK && http == 200;
+    bool found_cover = false;
+    long long size = 0;
 
-    if (found) {
+    if (ok) {
+        const char *end = response + strlen(response);
+        found_cover = find_cover_url(response, end, cover_url, cover_url_size);
+        size = parse_rom_total_size(response);
+    }
+
+    if (ok && (found_cover || size > 0)) {
         lock_games(state);
         if (job->generation == state->cover_worker.generation &&
             rom_index >= 0 && rom_index < state->library.count &&
             state->library.roms[rom_index].id == job->rom_id) {
-            snprintf(state->library.roms[rom_index].cover_url,
-                sizeof(state->library.roms[rom_index].cover_url), "%s", cover_url);
+            if (found_cover) {
+                snprintf(state->library.roms[rom_index].cover_url,
+                    sizeof(state->library.roms[rom_index].cover_url), "%s", cover_url);
+            }
+            if (size > 0) state->library.roms[rom_index].size_bytes = size;
         }
         unlock_games(state);
     }
 
     free(response);
-    return found;
+    return found_cover;
 }
 
 static void download_cover(AppState *state, const CoverJob *job, const char *cover_url, const char *cover_path) {
@@ -144,8 +154,10 @@ static int cover_worker_entry(SceSize args_size, void *argp) {
     snprintf(cover_url, sizeof(cover_url), "%s", job.cover_url);
     snprintf(cover_path, sizeof(cover_path), "%s", job.cache_path);
 
-    if (!cover_url[0]) {
-        fetch_cover_url(state, &job, args->rom_index, cover_url, sizeof(cover_url));
+    if (!cover_url[0] || (args->rom_index >= 0 && args->rom_index < state->library.count &&
+            state->library.roms[args->rom_index].id == job.rom_id &&
+            state->library.roms[args->rom_index].size_bytes <= 0)) {
+        fetch_rom_detail_metadata(state, &job, args->rom_index, cover_url, sizeof(cover_url));
     }
 
     download_cover(state, &job, cover_url, cover_path);
@@ -158,9 +170,10 @@ static int cover_worker_entry(SceSize args_size, void *argp) {
 static void start_current_cover_worker(AppState *state) {
     RomItem *rom = current_rom(state);
     if (!rom) return;
-    if (rom->cover || state->cover_worker.running) return;
+    if (state->cover_worker.running) return;
+    if (rom->cover && rom->size_bytes > 0) return;
 
-    if (file_has_content(rom->cover_path)) return;
+    if (file_has_content(rom->cover_path) && rom->size_bytes > 0) return;
 
     CoverWorkerArgs *args = (CoverWorkerArgs *)malloc(sizeof(CoverWorkerArgs));
     if (!args) return;
@@ -220,5 +233,5 @@ void ensure_current_cover_loading(AppState *state) {
     RomItem *rom = current_rom(state);
     if (!rom) return;
     if (!rom->cover) load_current_cover_from_cache(state);
-    if (!rom->cover) start_current_cover_worker(state);
+    if (!rom->cover || rom->size_bytes <= 0) start_current_cover_worker(state);
 }
