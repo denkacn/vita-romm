@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Drawing
 
-$outPath = "C:\Users\Denkacn\Documents\Codex\2026-08-14\xn\work\romm-vita-skeleton\assets\icon0.png"
+$outPath = Join-Path $PSScriptRoot "romm-vita-skeleton\assets\icon0.png"
 $width = 128
 $height = 128
 

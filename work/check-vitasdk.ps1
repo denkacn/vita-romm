@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$LogPath = "C:\Users\Denkacn\Documents\Codex\2026-08-14\xn\work\vitasdk-check.log"
+$LogPath = Join-Path $PSScriptRoot "vitasdk-check.log"
 
 wsl -d Ubuntu-24.04-H -u root -- bash -lc @'
 export VITASDK=/usr/local/vitasdk

@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $DistroName = "Ubuntu-24.04-H"
 $LinuxUser = ($env:USERNAME -replace '[^a-zA-Z0-9_-]', '').ToLowerInvariant()
-$LogPath = "C:\Users\Denkacn\Documents\Codex\2026-08-14\xn\work\configure-wsl-user.log"
+$LogPath = Join-Path $PSScriptRoot "configure-wsl-user.log"
 
 if ([string]::IsNullOrWhiteSpace($LinuxUser)) {
     $LinuxUser = "vita"

@@ -6,5 +6,4 @@ Project documentation lives in:
 
 ```text
 ../../README.md
-../../Doc/
 ```

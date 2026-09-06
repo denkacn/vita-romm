@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $DistroName = "Ubuntu-24.04-H"
 $InstallDir = "H:\WSL\Ubuntu-24.04"
 $DownloadDir = "H:\WSL\Downloads"
-$LogPath = "C:\Users\Denkacn\Documents\Codex\2026-08-14\xn\work\install-wsl2-h.log"
+$LogPath = Join-Path $PSScriptRoot "install-wsl2-h.log"
 $RootfsUrl = "https://cloud-images.ubuntu.com/wsl/releases/24.04/current/ubuntu-noble-wsl-amd64-wsl.rootfs.tar.gz"
 $RootfsPath = Join-Path $DownloadDir "ubuntu-noble-wsl-amd64-wsl.rootfs.tar.gz"
 

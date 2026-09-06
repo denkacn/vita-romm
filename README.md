@@ -92,14 +92,6 @@ Game screen:
 | X | Download/install selected game |
 | O | Back |
 
-## Documentation
-
-More detailed documentation is in the `Doc` folder:
-
-- [User Guide](Doc/UserGuide.md)
-- [Developer Notes](Doc/Developer.md)
-- [RomM OpenAPI Snapshot](Doc/RomM-OpenAPI.md)
-
 ## Disclaimer
 
 Vita RomM is provided for educational, research, preservation, and personal backup purposes only.
