@@ -39,8 +39,13 @@ void load_cached_platform_icon(AppState *state, PlatformDef *p) {
             snprintf(state->status, sizeof(state->status), "Loading platform icon");
             snprintf(state->detail, sizeof(state->detail), "%s", p->label);
             redraw_now(state);
+            char detail[220];
+            snprintf(detail, sizeof(detail), "slug=%s ext=%s path=%s", p->slug, exts[i], url_path);
+            debug_log_event(state, "platform icon download started", detail);
             CURLcode c = http_download(state, url, path, &http);
             if (c != CURLE_OK || http != 200) {
+                snprintf(detail, sizeof(detail), "slug=%s ext=%s curl=%d http=%ld", p->slug, exts[i], c, http);
+                debug_log_event(state, "platform icon download failed", detail);
                 sceIoRemove(path);
                 continue;
             }
@@ -49,6 +54,9 @@ void load_cached_platform_icon(AppState *state, PlatformDef *p) {
         if (!p->icon) p->icon = vita2d_load_JPEG_file(path);
         if (p->icon) {
             snprintf(p->icon_path, sizeof(p->icon_path), "%s", path);
+            char detail[220];
+            snprintf(detail, sizeof(detail), "slug=%s path=%s", p->slug, path);
+            debug_log_event(state, "platform icon loaded", detail);
             return;
         }
         sceIoRemove(path);
@@ -62,7 +70,16 @@ void load_current_cover_from_cache(AppState *state) {
 
     if (!file_has_content(rom->cover_path)) return;
     rom->cover = load_texture_file(rom->cover_path);
-    if (!rom->cover) sceIoRemove(rom->cover_path);
+    if (!rom->cover) {
+        char detail[220];
+        snprintf(detail, sizeof(detail), "rom=%d path=%s", rom->id, rom->cover_path);
+        debug_log_event(state, "cover cache invalid", detail);
+        sceIoRemove(rom->cover_path);
+    } else {
+        char detail[220];
+        snprintf(detail, sizeof(detail), "rom=%d path=%s", rom->id, rom->cover_path);
+        debug_log_event(state, "cover cache loaded", detail);
+    }
 }
 
 typedef struct {
@@ -87,7 +104,9 @@ static bool fetch_rom_detail_metadata(AppState *state, const CoverJob *job, int 
     snprintf(api_path, sizeof(api_path), "/api/roms/%d", job->rom_id);
     build_api_url(url, sizeof(url), state, api_path);
 
+    unsigned long long t0 = vita_now_ms();
     CURLcode c = http_get(state, url, response, &http);
+    unsigned long long t1 = vita_now_ms();
     bool ok = c == CURLE_OK && http == 200;
     bool found_cover = false;
     long long size = 0;
@@ -97,6 +116,11 @@ static bool fetch_rom_detail_metadata(AppState *state, const CoverJob *job, int 
         found_cover = find_cover_url(response, end, cover_url, cover_url_size);
         size = parse_rom_total_size(response);
     }
+
+    char detail[260];
+    snprintf(detail, sizeof(detail), "rom=%d curl=%d http=%ld cover=%d size=%lld ms=%llu",
+        job->rom_id, c, http, found_cover ? 1 : 0, size, t1 - t0);
+    debug_log_event(state, "cover metadata loaded", detail);
 
     if (ok && (found_cover || size > 0)) {
         lock_games(state);
@@ -128,10 +152,21 @@ static void download_cover(AppState *state, const CoverJob *job, const char *cov
     remove_path_recursive(part_path);
     mkdir_parent_for_file(cover_path);
 
+    char debug_detail[300];
+    snprintf(debug_detail, sizeof(debug_detail), "rom=%d path=%.120s url=%.120s", job->rom_id, cover_path, url);
+    debug_log_event(state, "cover download started", debug_detail);
     CURLcode c = http_download_quiet(state, url, part_path, &http);
     if (c == CURLE_OK && http == 200) {
         remove_path_recursive(cover_path);
-        if (sceIoRename(part_path, cover_path) < 0) remove_path_recursive(part_path);
+        int rename = sceIoRename(part_path, cover_path);
+        if (rename < 0) {
+            snprintf(debug_detail, sizeof(debug_detail), "rom=%d rename=0x%08X path=%s", job->rom_id, (unsigned int)rename, cover_path);
+            debug_log_event(state, "cover rename failed", debug_detail);
+            remove_path_recursive(part_path);
+        } else {
+            snprintf(debug_detail, sizeof(debug_detail), "rom=%d path=%s", job->rom_id, cover_path);
+            debug_log_event(state, "cover download completed", debug_detail);
+        }
         return;
     }
 
@@ -153,6 +188,10 @@ static int cover_worker_entry(SceSize args_size, void *argp) {
     char cover_path[160];
     snprintf(cover_url, sizeof(cover_url), "%s", job.cover_url);
     snprintf(cover_path, sizeof(cover_path), "%s", job.cache_path);
+    char detail[220];
+    snprintf(detail, sizeof(detail), "rom=%d index=%d generation=%d has_url=%d",
+        job.rom_id, args->rom_index, job.generation, cover_url[0] ? 1 : 0);
+    debug_log_event(state, "cover worker started", detail);
 
     if (!cover_url[0] || (args->rom_index >= 0 && args->rom_index < state->library.count &&
             state->library.roms[args->rom_index].id == job.rom_id &&
@@ -163,6 +202,8 @@ static int cover_worker_entry(SceSize args_size, void *argp) {
     download_cover(state, &job, cover_url, cover_path);
 
     finish_cover_worker(state, job.generation);
+    snprintf(detail, sizeof(detail), "rom=%d generation=%d", job.rom_id, job.generation);
+    debug_log_event(state, "cover worker finished", detail);
     free(args);
     return 0;
 }
@@ -180,6 +221,10 @@ static void start_current_cover_worker(AppState *state) {
     memset(args, 0, sizeof(*args));
     state->cover_worker.generation++;
     state->cover_worker.running = true;
+    char detail[220];
+    snprintf(detail, sizeof(detail), "rom=%d index=%d generation=%d has_cover=%d size=%lld",
+        rom->id, state->library.selected, state->cover_worker.generation, rom->cover ? 1 : 0, rom->size_bytes);
+    debug_log_event(state, "cover worker create", detail);
     args->state = state;
     args->rom_index = state->library.selected;
     args->job.generation = state->cover_worker.generation;
@@ -190,6 +235,9 @@ static void start_current_cover_worker(AppState *state) {
     SceUID thid = sceKernelCreateThread("vita_romm_cover", cover_worker_entry, 0x10000100, 128 * 1024, 0, 0, NULL);
     if (thid < 0) {
         state->cover_worker.running = false;
+        char fail_detail[120];
+        snprintf(fail_detail, sizeof(fail_detail), "create failed 0x%08X", (unsigned int)thid);
+        debug_log_event(state, "cover worker error", fail_detail);
         free(args);
         return;
     }
@@ -199,6 +247,9 @@ static void start_current_cover_worker(AppState *state) {
     if (start < 0) {
         state->cover_worker.generation++;
         state->cover_worker.running = false;
+        char fail_detail[120];
+        snprintf(fail_detail, sizeof(fail_detail), "start failed 0x%08X", (unsigned int)start);
+        debug_log_event(state, "cover worker error", fail_detail);
         free(args);
     }
 }

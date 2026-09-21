@@ -45,18 +45,27 @@ void load_platforms_and_roms(AppState *state) {
     state->busy = true;
     snprintf(state->status, sizeof(state->status), "Loading platforms");
     snprintf(state->detail, sizeof(state->detail), "GET /api/platforms");
+    debug_log_event(state, "platforms request started", "/api/platforms");
 
     char url[360];
     long http = 0;
+    unsigned long long t0 = vita_now_ms();
     build_api_url(url, sizeof(url), state, "/api/platforms");
     CURLcode c = http_get(state, url, http_response, &http);
+    unsigned long long t1 = vita_now_ms();
     if (c != CURLE_OK || http != 200) {
+        char detail[180];
+        snprintf(detail, sizeof(detail), "curl=%d http=%ld ms=%llu", c, http, t1 - t0);
+        debug_log_event(state, "platforms request failed", detail);
         snprintf(state->status, sizeof(state->status), "RomM API error");
         snprintf(state->detail, sizeof(state->detail), "platforms: %s / %ld", curl_easy_strerror(c), http);
         state->busy = false;
         return;
     }
     load_platform_catalog(state, http_response);
+    char platform_detail[200];
+    snprintf(platform_detail, sizeof(platform_detail), "catalog=%d bytes=%u ms=%llu", state->catalog.count, (unsigned int)strlen(http_response), t1 - t0);
+    debug_log_event(state, "platforms response parsed", platform_detail);
     if (state->catalog.count <= 0) {
         snprintf(state->status, sizeof(state->status), "No platforms");
         snprintf(state->detail, sizeof(state->detail), "RomM returned no platforms");
@@ -69,7 +78,13 @@ void load_platforms_and_roms(AppState *state) {
         if (state->catalog.platforms[p].id < 0) continue;
         snprintf(state->status, sizeof(state->status), "Loading %s", state->catalog.platforms[p].label);
 
+        unsigned long long count_start = vita_now_ms();
         state->catalog.platforms[p].rom_count = romm_get_platform_rom_count(state, &state->catalog.platforms[p], &http);
+        char detail[220];
+        snprintf(detail, sizeof(detail), "slug=%s ids=%d rom_count=%d ms=%llu",
+            state->catalog.platforms[p].slug, state->catalog.platforms[p].id_count,
+            state->catalog.platforms[p].rom_count, vita_now_ms() - count_start);
+        debug_log_event(state, "platform count loaded", detail);
     }
 
     int out = 0;
@@ -88,6 +103,9 @@ void load_platforms_and_roms(AppState *state) {
     }
 
     for (int i = 0; i < state->catalog.count; i++) {
+        char detail[160];
+        snprintf(detail, sizeof(detail), "slug=%s known=%d", state->catalog.platforms[i].slug, state->catalog.platforms[i].known ? 1 : 0);
+        debug_log_event(state, "platform icon load", detail);
         load_cached_platform_icon(state, &state->catalog.platforms[i]);
     }
 
@@ -182,6 +200,10 @@ static int games_worker_entry(SceSize args_size, void *argp) {
     AppState *state = args->state;
     PlatformDef p = args->platform;
     int generation = args->generation;
+    char start_detail[220];
+    snprintf(start_detail, sizeof(start_detail), "slug=%s index=%d ids=%d generation=%d page_size=%d",
+        p.slug, args->platform_index, p.id_count, generation, ROMM_PAGE_SIZE);
+    debug_log_event(state, "games worker started", start_detail);
     char *response = (char *)malloc(HTTP_RESPONSE_MAX + 1);
     if (!response) {
         fail_games_worker(state, generation, "Out of memory");
@@ -201,6 +223,9 @@ static int games_worker_entry(SceSize args_size, void *argp) {
     for (int id_index = 0; id_index < ids && worker_generation_alive(state, generation); id_index++) {
         int platform_id = p.id_count > 0 ? p.ids[id_index] : p.id;
         int offset = 0;
+        char id_detail[160];
+        snprintf(id_detail, sizeof(id_detail), "slug=%s id=%d id_index=%d/%d", p.slug, platform_id, id_index + 1, ids);
+        debug_log_event(state, "games platform id started", id_detail);
         while (worker_generation_alive(state, generation)) {
             long http = 0;
             unsigned long long t0 = vita_now_ms();
@@ -236,6 +261,9 @@ static int games_worker_entry(SceSize args_size, void *argp) {
     if (page_curl) curl_easy_cleanup(page_curl);
 
     finish_games_worker(state, generation, &p);
+    snprintf(start_detail, sizeof(start_detail), "slug=%s generation=%d final_count=%d alive=%d",
+        p.slug, generation, state->library.count, worker_generation_alive(state, generation) ? 1 : 0);
+    debug_log_event(state, "games worker finished", start_detail);
 
     free(page);
     free(response);
@@ -251,6 +279,10 @@ static void start_games_worker(AppState *state, int platform_index, const Platfo
     state->library_worker.id_index = 0;
     state->library_worker.offset = 0;
     state->library_worker.page_size = ROMM_PAGE_SIZE;
+    char detail[220];
+    snprintf(detail, sizeof(detail), "slug=%s index=%d generation=%d page_size=%d",
+        p->slug, platform_index, state->library_worker.generation, state->library_worker.page_size);
+    debug_log_event(state, "games worker create", detail);
 
     GameWorkerArgs *args = (GameWorkerArgs *)malloc(sizeof(GameWorkerArgs));
     if (!args) {
@@ -268,6 +300,9 @@ static void start_games_worker(AppState *state, int platform_index, const Platfo
 
     SceUID thid = sceKernelCreateThread("vita_romm_games", games_worker_entry, 0x10000100, 256 * 1024, 0, 0, NULL);
     if (thid < 0) {
+        char fail_detail[120];
+        snprintf(fail_detail, sizeof(fail_detail), "create failed 0x%08X", (unsigned int)thid);
+        debug_log_event(state, "games worker error", fail_detail);
         free(args);
         state->library_worker.running = false;
         state->library_worker.loading_more = false;
@@ -284,6 +319,9 @@ static void start_games_worker(AppState *state, int platform_index, const Platfo
         state->library_worker.loading_more = false;
         snprintf(state->status, sizeof(state->status), "ROM list error");
         snprintf(state->detail, sizeof(state->detail), "Worker start failed 0x%08X", (unsigned int)start);
+        char fail_detail[120];
+        snprintf(fail_detail, sizeof(fail_detail), "start failed 0x%08X", (unsigned int)start);
+        debug_log_event(state, "games worker error", fail_detail);
         free(args);
     }
 }
@@ -303,5 +341,8 @@ void load_games(AppState *state, int platform_index) {
     state->view = VIEW_GAMES;
     set_platform_game_detail(state, p);
     snprintf(state->detail, sizeof(state->detail), "Loading first 50...");
+    char detail[220];
+    snprintf(detail, sizeof(detail), "slug=%s index=%d id=%d rom_count=%d", p->slug, platform_index, p->id, p->rom_count);
+    debug_log_event(state, "load games requested", detail);
     start_games_worker(state, platform_index, p);
 }

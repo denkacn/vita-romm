@@ -110,3 +110,15 @@ void log_event(const char *event, const char *detail) {
     }
     append_install_log(line);
 }
+
+void debug_log_event(const AppState *state, const char *event, const char *detail) {
+    if (!state || !state->debug_logging) return;
+
+    char line[512];
+    if (detail && detail[0]) {
+        snprintf(line, sizeof(line), "debug %s: %s", event, detail);
+    } else {
+        snprintf(line, sizeof(line), "debug %s", event);
+    }
+    append_install_log(line);
+}

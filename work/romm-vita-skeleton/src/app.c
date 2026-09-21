@@ -7,6 +7,7 @@
 #include "net.h"
 #include "ui.h"
 #include "ui_resources.h"
+#include "vita_fs.h"
 
 static AppState state;
 
@@ -38,9 +39,11 @@ static bool app_init(BitmapFont *font) {
     state.library_worker.lock = sceKernelCreateSema("vita_romm_games_lock", 0, 1, 1, NULL);
     sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
     ensure_config(&state);
+    debug_log_event(&state, "app init", "config ready");
     init_network(&state);
     refresh_network(&state);
     curl_global_init(CURL_GLOBAL_DEFAULT);
+    debug_log_event(&state, "app init", "curl ready");
 
     vita2d_init();
     vita2d_set_clear_color(COLOR_BG);
@@ -51,6 +54,7 @@ static bool app_init(BitmapFont *font) {
     g_font = font;
     g_logo_texture = vita2d_load_PNG_file("app0:sce_sys/icon0.png");
     load_builtin_platform_icons();
+    debug_log_event(&state, "app init", "ui resources ready");
     return true;
 }
 
@@ -69,7 +73,9 @@ static void app_boot_library(BitmapFont *font) {
     app_state_sync_views(&state);
     draw_ui(font, &state);
     sceDisplayWaitVblankStart();
+    debug_log_event(&state, "boot splash", "delay 3000ms");
     sceKernelDelayThread(3000000);
+    debug_log_event(&state, "boot library", "loading platforms");
     load_platforms_and_roms(&state);
 }
 

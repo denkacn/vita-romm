@@ -66,11 +66,34 @@ For retro platforms, Vita RomM downloads files into the folder you configure. Yo
    ```text
    server_url=http://your-romm-server.local/
    api_token=rmm_your_token_here
+   debug_logging=0
    ```
 
 6. Launch Vita RomM again and open your library.
 
 On a trusted local network, HTTP is usually easier than HTTPS on PS Vita because certificate handling can be fragile on the console.
+
+## Logs
+
+Vita RomM writes its log here:
+
+```text
+ux0:data/vita-romm/install.log
+```
+
+For normal use, keep this option disabled:
+
+```text
+debug_logging=0
+```
+
+If the app gets stuck while loading platforms, opening a large platform, downloading covers, or downloading games, set it to:
+
+```text
+debug_logging=1
+```
+
+Then restart Vita RomM, reproduce the problem, and check `ux0:data/vita-romm/install.log`. Debug logging records network timing, RomM API page loading, worker startup and finish events, cover cache activity, and download details.
 
 ## Controls
 
@@ -112,4 +135,4 @@ PlayStation, PS Vita, PSP, LiveArea, and related names are trademarks or registe
 
 ## Status
 
-Current version: `0.8.0`
+Current version: `0.8.1`

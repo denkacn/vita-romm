@@ -28,7 +28,7 @@
 #define APP_TITLE "Vita RomM"
 #define APP_TITLEID "ROMM00001"
 #ifndef ROMM_VITA_VERSION
-#define ROMM_VITA_VERSION "0.8.0"
+#define ROMM_VITA_VERSION "0.8.1"
 #endif
 #define CONFIG_DIR "ux0:data/vita-romm"
 #define CONFIG_PATH CONFIG_DIR "/config.txt"
@@ -242,6 +242,7 @@ struct AppState {
 
     ViewMode view;
     bool auto_refresh_livearea;
+    bool debug_logging;
     bool busy;
 };
 

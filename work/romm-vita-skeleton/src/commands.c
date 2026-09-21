@@ -5,6 +5,7 @@
 #include "livearea.h"
 #include "romm_client.h"
 #include "ui.h"
+#include "vita_fs.h"
 
 static bool has_games(const AppState *state) {
     return state->library.count > 0;
@@ -23,10 +24,18 @@ static void select_rom(AppState *state, int delta) {
 void command_select_platform(AppState *state, int delta) {
     if (state->catalog.count <= 0) return;
     state->catalog.selected = (state->catalog.selected + state->catalog.count + delta) % state->catalog.count;
+    const PlatformDef *p = &state->catalog.platforms[state->catalog.selected];
+    char detail[160];
+    snprintf(detail, sizeof(detail), "index=%d slug=%s rom_count=%d", state->catalog.selected, p->slug, p->rom_count);
+    debug_log_event(state, "platform selected", detail);
 }
 
 void command_open_selected_platform(AppState *state, BitmapFont *font) {
     if (state->catalog.count <= 0) return;
+    const PlatformDef *p = &state->catalog.platforms[state->catalog.selected];
+    char detail[160];
+    snprintf(detail, sizeof(detail), "index=%d slug=%s id=%d", state->catalog.selected, p->slug, p->id);
+    debug_log_event(state, "platform open", detail);
     draw_ui(font, state);
     load_games(state, state->catalog.selected);
 }
@@ -38,6 +47,12 @@ void command_refresh_livearea(AppState *state, BitmapFont *font) {
 
 void command_browse_game(AppState *state, int delta) {
     select_rom(state, delta);
+    RomItem *rom = selected_rom(state);
+    if (rom) {
+        char detail[180];
+        snprintf(detail, sizeof(detail), "index=%d rom=%d name=%.90s", state->library.selected, rom->id, rom->name);
+        debug_log_event(state, "game selected", detail);
+    }
     load_current_cover_from_cache(state);
 }
 
@@ -67,6 +82,10 @@ void command_move_game_list(AppState *state, int delta) {
 void command_select_game_from_list(AppState *state) {
     RomItem *rom = selected_rom(state);
     if (!rom) return;
+
+    char detail[180];
+    snprintf(detail, sizeof(detail), "index=%d rom=%d name=%.90s", state->library.selected, rom->id, rom->name);
+    debug_log_event(state, "game list select", detail);
 
     state->view = VIEW_GAMES;
     load_rom_metadata_from_detail(state, rom);

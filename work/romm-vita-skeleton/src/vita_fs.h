@@ -11,5 +11,6 @@ bool dir_exists(const char *path);
 void redraw_now(const AppState *state);
 void append_install_log(const char *line);
 void log_event(const char *event, const char *detail);
+void debug_log_event(const AppState *state, const char *event, const char *detail);
 
 #endif

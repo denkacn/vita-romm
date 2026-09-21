@@ -1,5 +1,6 @@
 #include "config.h"
 #include "util.h"
+#include "vita_fs.h"
 
 void url_encode(char *dst, size_t dst_size, const char *src) {
     static const char hex[] = "0123456789ABCDEF";
@@ -86,6 +87,7 @@ void init_defaults(AppState *state) {
     state->library_worker.lock = -1;
     state->cover_worker.thread = -1;
     state->auto_refresh_livearea = false;
+    state->debug_logging = false;
     snprintf(state->server_url, sizeof(state->server_url), "http://example.com/");
     snprintf(state->vita_install_dir, sizeof(state->vita_install_dir), CONFIG_DIR "/downloads/psvita");
     snprintf(state->vita_download_dir, sizeof(state->vita_download_dir), CONFIG_DIR "/downloads/psvita");
@@ -129,6 +131,7 @@ void ensure_config(AppState *state) {
                 else if (starts_with(line, "psp_download_dir=")) copy_value(state->psp_download_dir, sizeof(state->psp_download_dir), line + 17);
                 else if (starts_with(line, "platform.psx.pbp_path=")) copy_value(state->psx_pbp_dir, sizeof(state->psx_pbp_dir), line + 22);
                 else if (starts_with(line, "auto_refresh_livearea=")) state->auto_refresh_livearea = atoi(line + 22) != 0;
+                else if (starts_with(line, "debug_logging=")) state->debug_logging = atoi(line + 14) != 0;
                 else if (starts_with(line, "platform.")) {
                     char *path_key = strstr(line, ".path=");
                     if (path_key) {
@@ -154,6 +157,7 @@ void ensure_config(AppState *state) {
         if (!state->psp_game_dir[0]) snprintf(state->psp_game_dir, sizeof(state->psp_game_dir), "ux0:pspemu/PSP/GAME");
         if (!state->psp_download_dir[0]) snprintf(state->psp_download_dir, sizeof(state->psp_download_dir), CONFIG_DIR "/downloads/psp");
         if (!state->psx_pbp_dir[0]) snprintf(state->psx_pbp_dir, sizeof(state->psx_pbp_dir), "%s", state->psp_game_dir);
+        debug_log_event(state, "config loaded", state->server_url);
         return;
     }
 
@@ -182,7 +186,8 @@ void ensure_config(AppState *state) {
             "platform.snes.path=%s\n"
             "platform.genesis.path=%s\n"
             "platform.n64.path=%s\n"
-            "auto_refresh_livearea=0\n",
+            "auto_refresh_livearea=0\n"
+            "debug_logging=0\n",
             state->vita_install_dir,
             state->vita_download_dir,
             state->vita_app_dir,

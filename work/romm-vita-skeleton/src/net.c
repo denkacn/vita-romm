@@ -1,8 +1,27 @@
 #include "net.h"
 #include "ui.h"
 #include "ui_resources.h"
+#include "vita_fs.h"
 
 static char net_memory[1 * 1024 * 1024];
+
+static unsigned long long net_now_ms(void) {
+    return (unsigned long long)(sceKernelGetProcessTimeWide() / 1000ULL);
+}
+
+static const char *url_debug_path(const char *url) {
+    const char *p = strstr(url, "://");
+    if (!p) return url;
+    p = strchr(p + 3, '/');
+    return p ? p : "/";
+}
+
+static void log_http_result(const AppState *state, const char *kind, const char *url, CURLcode curl_code, long http_code, unsigned long long elapsed_ms, size_t bytes) {
+    char detail[420];
+    snprintf(detail, sizeof(detail), "%s curl=%d http=%ld ms=%llu bytes=%u path=%.260s",
+        kind, curl_code, http_code, elapsed_ms, (unsigned int)bytes, url_debug_path(url));
+    debug_log_event(state, "http", detail);
+}
 
 void init_network(AppState *state) {
     SceNetInitParam p;
@@ -13,6 +32,7 @@ void init_network(AppState *state) {
     sceNetInit(&p);
     sceNetCtlInit();
     snprintf(state->network_status, sizeof(state->network_status), "Network initialized");
+    debug_log_event(state, "network init", "sceNet initialized");
 }
 
 void refresh_network(AppState *state) {
@@ -20,6 +40,7 @@ void refresh_network(AppState *state) {
     if (sceNetCtlInetGetState(&s) < 0 || s != SCE_NETCTL_STATE_CONNECTED) {
         snprintf(state->network_status, sizeof(state->network_status), "Not connected");
         state->ip_address[0] = '\0';
+        debug_log_event(state, "network state", "not connected");
         return;
     }
     SceNetCtlInfo info;
@@ -28,6 +49,9 @@ void refresh_network(AppState *state) {
         snprintf(state->ip_address, sizeof(state->ip_address), "%s", info.ip_address);
     }
     snprintf(state->network_status, sizeof(state->network_status), "Connected");
+    char detail[120];
+    snprintf(detail, sizeof(detail), "connected ip=%s", state->ip_address);
+    debug_log_event(state, "network state", detail);
 }
 
 static size_t write_string_cb(char *ptr, size_t size, size_t nmemb, void *userdata) {
@@ -115,10 +139,13 @@ CURLcode http_get(AppState *state, const char *url, char *response, long *code_o
     struct curl_slist *headers = setup_headers(curl, state, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_string_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+    unsigned long long t0 = net_now_ms();
     CURLcode code = curl_easy_perform(curl);
+    unsigned long long elapsed = net_now_ms() - t0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     curl_easy_cleanup(curl);
     if (headers) curl_slist_free_all(headers);
+    log_http_result(state, "get", url, code, *code_out, elapsed, strlen(response));
     return code;
 }
 
@@ -130,9 +157,12 @@ CURLcode http_get_reuse(AppState *state, CURL *curl, const char *url, char *resp
     struct curl_slist *headers = setup_headers(curl, state, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_string_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+    unsigned long long t0 = net_now_ms();
     CURLcode code = curl_easy_perform(curl);
+    unsigned long long elapsed = net_now_ms() - t0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     if (headers) curl_slist_free_all(headers);
+    log_http_result(state, "get-reuse", url, code, *code_out, elapsed, strlen(response));
     return code;
 }
 
@@ -159,11 +189,17 @@ CURLcode http_download(AppState *state, const char *url, const char *path, long 
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, download_progress_cb);
     curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
+    unsigned long long t0 = net_now_ms();
     CURLcode code = curl_easy_perform(curl);
+    unsigned long long elapsed = net_now_ms() - t0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     curl_easy_cleanup(curl);
     if (headers) curl_slist_free_all(headers);
     sceIoClose(fd);
+    SceIoStat st;
+    memset(&st, 0, sizeof(st));
+    size_t bytes = sceIoGetstat(path, &st) >= 0 ? (size_t)st.st_size : 0;
+    log_http_result(state, "download", url, code, *code_out, elapsed, bytes);
     return code;
 }
 
@@ -186,10 +222,16 @@ CURLcode http_download_quiet(AppState *state, const char *url, const char *path,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_file_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+    unsigned long long t0 = net_now_ms();
     CURLcode code = curl_easy_perform(curl);
+    unsigned long long elapsed = net_now_ms() - t0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     curl_easy_cleanup(curl);
     if (headers) curl_slist_free_all(headers);
     sceIoClose(fd);
+    SceIoStat st;
+    memset(&st, 0, sizeof(st));
+    size_t bytes = sceIoGetstat(path, &st) >= 0 ? (size_t)st.st_size : 0;
+    log_http_result(state, "download-quiet", url, code, *code_out, elapsed, bytes);
     return code;
 }
