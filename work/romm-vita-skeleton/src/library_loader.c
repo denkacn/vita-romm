@@ -33,12 +33,26 @@ static void add_configured_platform(AppState *state, const PlatformDef *raw) {
     }
 }
 
+enum { RAW_PLATFORM_MAX = 512 };
+
 static void load_platform_catalog(AppState *state, const char *json) {
-    PlatformDef raw[MAX_PLATFORMS];
-    int count = parse_platform_defs(json, raw, MAX_PLATFORMS);
+    PlatformDef *raw = (PlatformDef *)malloc(sizeof(PlatformDef) * RAW_PLATFORM_MAX);
     state->catalog.count = 0;
     state->catalog.selected = 0;
+    if (!raw) return;
+    int count = parse_platform_defs(json, raw, RAW_PLATFORM_MAX);
     for (int i = 0; i < count; i++) add_configured_platform(state, &raw[i]);
+
+    char detail[160];
+    snprintf(detail, sizeof(detail), "raw=%d kept=%d", count, state->catalog.count);
+    debug_log_event(state, "platform filter", detail);
+    if (state->catalog.count == 0) {
+        for (int i = 0; i < count && i < 40; i++) {
+            snprintf(detail, sizeof(detail), "id=%d slug=%s label=%.60s", raw[i].id, raw[i].slug, raw[i].label);
+            debug_log_event(state, "platform dropped", detail);
+        }
+    }
+    free(raw);
 }
 
 void load_platforms_and_roms(AppState *state) {
