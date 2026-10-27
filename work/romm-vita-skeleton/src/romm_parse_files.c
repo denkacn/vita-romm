@@ -95,6 +95,10 @@ static long long sum_file_sizes(const RomFileItem *files, int count) {
 }
 
 long long parse_rom_total_size(const char *json) {
+    // RomM reports the whole ROM's size (all files) as fs_size_bytes; file
+    // entries only cover recognised extensions, so .zip/.vpk would be missed.
+    long long fs_size = 0;
+    if (extract_int64(json, json + strlen(json), "fs_size_bytes", &fs_size) && fs_size > 0) return fs_size;
     RomFileItem files[32];
     int count = parse_rom_files(json, files, 32);
     long long total = sum_file_sizes(files, count);

@@ -5,6 +5,11 @@
 
 static char net_memory[1 * 1024 * 1024];
 
+enum {
+    DOWNLOAD_WRITE_BUF_SIZE = 2 * 1024 * 1024,
+    DOWNLOAD_CURL_BUF_SIZE = 512 * 1024
+};
+
 static unsigned long long net_now_ms(void) {
     return (unsigned long long)(sceKernelGetProcessTimeWide() / 1000ULL);
 }
@@ -67,10 +72,36 @@ static size_t write_string_cb(char *ptr, size_t size, size_t nmemb, void *userda
     return total;
 }
 
+static bool write_all(DownloadContext *ctx, const char *data, size_t len) {
+    while (len > 0) {
+        int n = sceIoWrite(ctx->fd, data, (SceSize)len);
+        if (n <= 0) {
+            ctx->write_failed = true;
+            return false;
+        }
+        data += n;
+        len -= (size_t)n;
+    }
+    return true;
+}
+
+static bool flush_write_buf(DownloadContext *ctx) {
+    if (!ctx->write_buf || ctx->write_len == 0) return !ctx->write_failed;
+    bool ok = write_all(ctx, ctx->write_buf, ctx->write_len);
+    ctx->write_len = 0;
+    return ok;
+}
+
+// Memory card writes are slow in small chunks, so batch curl's ~16 KB
+// callbacks into one large sceIoWrite.
 static size_t write_file_cb(char *ptr, size_t size, size_t nmemb, void *userdata) {
     DownloadContext *ctx = (DownloadContext *)userdata;
     size_t total = size * nmemb;
-    sceIoWrite(ctx->fd, ptr, (SceSize)total);
+    if (!ctx->write_buf) return write_all(ctx, ptr, total) ? total : 0;
+    if (ctx->write_len + total > ctx->write_cap && !flush_write_buf(ctx)) return 0;
+    if (total >= ctx->write_cap) return write_all(ctx, ptr, total) ? total : 0;
+    memcpy(ctx->write_buf + ctx->write_len, ptr, total);
+    ctx->write_len += total;
     return total;
 }
 
@@ -83,6 +114,9 @@ static int download_progress_cb(void *userdata, curl_off_t dltotal, curl_off_t d
 
     if (dlnow < ctx->last_drawn + (256 * 1024) && !(dltotal > 0 && dlnow >= dltotal)) return 0;
     ctx->last_drawn = dlnow;
+    // No buttons are pressed during a long download, so keep the system from
+    // dimming and auto-suspending, which drops Wi-Fi and kills the transfer.
+    sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
 
     double mb_now = (double)dlnow / (1024.0 * 1024.0);
     if (dltotal > 0) {
@@ -179,8 +213,11 @@ CURLcode http_download(AppState *state, const char *url, const char *path, long 
     memset(&ctx, 0, sizeof(ctx));
     ctx.fd = fd;
     ctx.state = state;
+    ctx.write_cap = DOWNLOAD_WRITE_BUF_SIZE;
+    ctx.write_buf = (char *)malloc(ctx.write_cap);
 
     struct curl_slist *headers = setup_headers(curl, state, url);
+    curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, DOWNLOAD_CURL_BUF_SIZE);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 256L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 45L);
@@ -191,10 +228,12 @@ CURLcode http_download(AppState *state, const char *url, const char *path, long 
     curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
     unsigned long long t0 = net_now_ms();
     CURLcode code = curl_easy_perform(curl);
+    if (!flush_write_buf(&ctx) && code == CURLE_OK) code = CURLE_WRITE_ERROR;
     unsigned long long elapsed = net_now_ms() - t0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, code_out);
     curl_easy_cleanup(curl);
     if (headers) curl_slist_free_all(headers);
+    free(ctx.write_buf);
     sceIoClose(fd);
     SceIoStat st;
     memset(&st, 0, sizeof(st));

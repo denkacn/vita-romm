@@ -6,13 +6,20 @@
 #include "util.h"
 #include "vita_fs.h"
 
+// /api/roms defaults with_char_index and with_filter_values to true, which can
+// push a 50-item page past HTTP_RESPONSE_MAX. The older with_extra and
+// with_rom_id_index names are kept for servers that still read them.
+#define ROMM_LIST_SLIM_PARAMS \
+    "&with_char_index=false&with_filter_values=false&with_files=false" \
+    "&with_extra=false&with_rom_id_index=false"
+
 static CURLcode get_platform_roms_page_into(AppState *state, int platform_id, const char *slug, int limit, int offset, char *response, long *http_out) {
-    char url[380];
-    char path[160];
+    char url[480];
+    char path[260];
     const char *formats[] = {
-        "/api/roms?platform_ids=%d&limit=%d&offset=%d",
-        "/api/roms?platform_id=%d&limit=%d&offset=%d",
-        "/api/roms?platform=%d&limit=%d&offset=%d"
+        "/api/roms?platform_ids=%d&limit=%d&offset=%d" ROMM_LIST_SLIM_PARAMS,
+        "/api/roms?platform_id=%d&limit=%d&offset=%d" ROMM_LIST_SLIM_PARAMS,
+        "/api/roms?platform=%d&limit=%d&offset=%d" ROMM_LIST_SLIM_PARAMS
     };
     CURLcode last_c = CURLE_OK;
     long last_http = 0;
@@ -46,11 +53,10 @@ static CURLcode get_platform_roms_page(AppState *state, int platform_id, const c
 }
 
 CURLcode romm_get_platform_roms_page_fast(AppState *state, CURL *curl, int platform_id, int limit, int offset, char *response, long *http_out) {
-    char url[380];
-    char path[160];
+    char url[480];
+    char path[260];
     snprintf(path, sizeof(path),
-        "/api/roms?platform_ids=%d&limit=%d&offset=%d"
-        "&order_by=name&order_dir=asc&with_extra=false&with_rom_id_index=false",
+        "/api/roms?platform_ids=%d&limit=%d&offset=%d&order_by=name&order_dir=asc" ROMM_LIST_SLIM_PARAMS,
         platform_id, limit, offset);
     build_api_url(url, sizeof(url), state, path);
     return http_get_reuse(state, curl, url, response, http_out);
@@ -65,7 +71,8 @@ int romm_get_platform_rom_count(AppState *state, const PlatformDef *platform, lo
     int ids = platform->id_count > 0 ? platform->id_count : 1;
     for (int i = 0; i < ids; i++) {
         int platform_id = platform->id_count > 0 ? platform->ids[i] : platform->id;
-        CURLcode c = get_platform_roms_page(state, platform_id, platform->slug, 50, 0, http_out);
+        // Only the page's total is needed here, so fetch a single item.
+        CURLcode c = get_platform_roms_page(state, platform_id, platform->slug, 1, 0, http_out);
         if (c != CURLE_OK || *http_out != 200) continue;
         int api_total = extract_collection_count(http_response);
         int page_count = count_roms_for_platform(http_response, platform_id);

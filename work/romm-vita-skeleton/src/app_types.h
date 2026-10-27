@@ -10,6 +10,7 @@
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/net/net.h>
 #include <psp2/net/netctl.h>
+#include <psp2/power.h>
 #include <psp2/promoterutil.h>
 #include <psp2/sysmodule.h>
 
@@ -28,7 +29,7 @@
 #define APP_TITLE "Vita RomM"
 #define APP_TITLEID "ROMM00001"
 #ifndef ROMM_VITA_VERSION
-#define ROMM_VITA_VERSION "0.8.1"
+#define ROMM_VITA_VERSION "0.8.2"
 #endif
 #define CONFIG_DIR "ux0:data/vita-romm"
 #define CONFIG_PATH CONFIG_DIR "/config.txt"
@@ -36,8 +37,8 @@
 #define PLATFORM_ICON_CACHE_DIR CONFIG_DIR "/platform-icons"
 #define DOWNLOAD_DIR CONFIG_DIR "/downloads"
 #define FONT_RENDERER_NAME "Inter bitmap atlas"
-#define HTTP_RESPONSE_MAX 524287
-#define MAX_ROMS 1024
+#define HTTP_RESPONSE_MAX 2097151
+#define MAX_ROMS 4096
 #define MAX_PLATFORMS 32
 #define MAX_PLATFORM_IDS 8
 #define MAX_PLATFORM_PATHS 32
@@ -254,6 +255,10 @@ typedef struct {
     SceUID fd;
     AppState *state;
     curl_off_t last_drawn;
+    char *write_buf;
+    size_t write_len;
+    size_t write_cap;
+    bool write_failed;
 } DownloadContext;
 
 #endif
