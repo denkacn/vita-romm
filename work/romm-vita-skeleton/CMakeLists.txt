@@ -15,7 +15,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Vita RomM")
 set(VITA_TITLEID "ROMM00001")
 set(VITA_VERSION "01.00")
-set(ROMM_VITA_VERSION "0.8.1")
+set(ROMM_VITA_VERSION "0.8.2")
 
 set(VITA_IP "" CACHE STRING "PS Vita IP address for FTP/vitacompanion deploy")
 set(VITA_FTP_PORT "1337" CACHE STRING "PS Vita FTP port")
@@ -90,6 +90,7 @@ target_link_libraries(${PROJECT_NAME}
   SceNet_stub
   SceNetCtl_stub
   ScePgf_stub
+  ScePower_stub
   ScePaf_stub
   ScePromoterUtil_stub
   ScePvf_stub

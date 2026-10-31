@@ -135,4 +135,4 @@ PlayStation, PS Vita, PSP, LiveArea, and related names are trademarks or registe
 
 ## Status
 
-Current version: `0.8.1`
+Current version: `0.8.2`

@@ -131,11 +131,11 @@ bool extract_int64(const char *start, const char *end, const char *field, long l
 
 long long extract_size_bytes(const char *start, const char *end) {
     const char *fields[] = {
-        "file_size_bytes", "size_bytes", "fs_size", "file_size",
+        "fs_size_bytes", "file_size_bytes", "size_bytes", "fs_size", "file_size",
         "filesize", "rom_size", "total_size", "size"
     };
     long long value = 0;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 9; i++) {
         if (extract_int64(start, end, fields[i], &value) && value > 0) return value;
     }
     return 0;

@@ -86,6 +86,8 @@ bool dir_exists(const char *path) {
 }
 
 void redraw_now(const AppState *state) {
+    // Called through long blocking install steps; keep the system awake.
+    sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
     if (g_font) {
         draw_ui(g_font, state);
         sceDisplayWaitVblankStart();

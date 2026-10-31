@@ -33,12 +33,26 @@ static void add_configured_platform(AppState *state, const PlatformDef *raw) {
     }
 }
 
+enum { RAW_PLATFORM_MAX = 512 };
+
 static void load_platform_catalog(AppState *state, const char *json) {
-    PlatformDef raw[MAX_PLATFORMS];
-    int count = parse_platform_defs(json, raw, MAX_PLATFORMS);
+    PlatformDef *raw = (PlatformDef *)malloc(sizeof(PlatformDef) * RAW_PLATFORM_MAX);
     state->catalog.count = 0;
     state->catalog.selected = 0;
+    if (!raw) return;
+    int count = parse_platform_defs(json, raw, RAW_PLATFORM_MAX);
     for (int i = 0; i < count; i++) add_configured_platform(state, &raw[i]);
+
+    char detail[160];
+    snprintf(detail, sizeof(detail), "raw=%d kept=%d", count, state->catalog.count);
+    debug_log_event(state, "platform filter", detail);
+    if (state->catalog.count == 0) {
+        for (int i = 0; i < count && i < 40; i++) {
+            snprintf(detail, sizeof(detail), "id=%d slug=%s label=%.60s", raw[i].id, raw[i].slug, raw[i].label);
+            debug_log_event(state, "platform dropped", detail);
+        }
+    }
+    free(raw);
 }
 
 void load_platforms_and_roms(AppState *state) {
@@ -139,7 +153,8 @@ typedef struct {
 } GameWorkerArgs;
 
 enum {
-    ROMM_PAGE_SIZE = 50
+    ROMM_PAGE_SIZE = 50,
+    ROMM_MIN_PAGE_SIZE = 5
 };
 
 void lock_games(AppState *state) {
@@ -148,6 +163,13 @@ void lock_games(AppState *state) {
 
 void unlock_games(AppState *state) {
     if (state->library_worker.lock >= 0) sceKernelSignalSema(state->library_worker.lock, 1);
+}
+
+static bool library_full(AppState *state) {
+    lock_games(state);
+    bool full = state->library.count >= MAX_ROMS;
+    unlock_games(state);
+    return full;
 }
 
 static bool worker_generation_alive(AppState *state, int generation) {
@@ -210,7 +232,7 @@ static int games_worker_entry(SceSize args_size, void *argp) {
         free(args);
         return 0;
     }
-    AppState *page = (AppState *)malloc(sizeof(AppState));
+    RomItem *page = (RomItem *)malloc(sizeof(RomItem) * ROMM_PAGE_SIZE);
     if (!page) {
         fail_games_worker(state, generation, "Out of memory");
         free(response);
@@ -223,13 +245,14 @@ static int games_worker_entry(SceSize args_size, void *argp) {
     for (int id_index = 0; id_index < ids && worker_generation_alive(state, generation); id_index++) {
         int platform_id = p.id_count > 0 ? p.ids[id_index] : p.id;
         int offset = 0;
+        int page_size = ROMM_PAGE_SIZE;
         char id_detail[160];
         snprintf(id_detail, sizeof(id_detail), "slug=%s id=%d id_index=%d/%d", p.slug, platform_id, id_index + 1, ids);
         debug_log_event(state, "games platform id started", id_detail);
-        while (worker_generation_alive(state, generation)) {
+        while (worker_generation_alive(state, generation) && !library_full(state)) {
             long http = 0;
             unsigned long long t0 = vita_now_ms();
-            CURLcode c = romm_get_platform_roms_page_fast(state, page_curl, platform_id, ROMM_PAGE_SIZE, offset, response, &http);
+            CURLcode c = romm_get_platform_roms_page_fast(state, page_curl, platform_id, page_size, offset, response, &http);
             unsigned long long t1 = vita_now_ms();
             if (c != CURLE_OK || http != 200) {
                 char detail[240];
@@ -238,23 +261,32 @@ static int games_worker_entry(SceSize args_size, void *argp) {
                 break;
             }
 
-            memset(page, 0, sizeof(*page));
-            int added = parse_rom_items(response, p.slug, -1, page->library.roms, MAX_ROMS);
-            if (offset == 0 && added > 0) {
-                load_rom_metadata_from_detail(state, &page->library.roms[0]);
+            // A page that fills the buffer was cut off mid-JSON and would parse
+            // as empty, so retry the same offset with fewer ROMs per page.
+            if (strlen(response) >= HTTP_RESPONSE_MAX && page_size > ROMM_MIN_PAGE_SIZE) {
+                page_size = page_size / 2 > ROMM_MIN_PAGE_SIZE ? page_size / 2 : ROMM_MIN_PAGE_SIZE;
+                char detail[200];
+                snprintf(detail, sizeof(detail), "slug=%s id=%d offset=%d new_page_size=%d", p.slug, platform_id, offset, page_size);
+                log_event("page truncated", detail);
+                continue;
             }
-            page->library.count = added;
+
+            memset(page, 0, sizeof(RomItem) * ROMM_PAGE_SIZE);
+            int added = parse_rom_items(response, p.slug, -1, page, page_size);
+            if (offset == 0 && added > 0) {
+                load_rom_metadata_from_detail(state, &page[0]);
+            }
             unsigned long long t2 = vita_now_ms();
             int total = extract_collection_count(response);
-            append_worker_roms(state, generation, &p, page->library.roms, page->library.count, total);
+            append_worker_roms(state, generation, &p, page, added, total);
             unsigned long long t3 = vita_now_ms();
 
             char detail[260];
-            snprintf(detail, sizeof(detail), "slug=%s id=%d offset=%d added=%d total=%d bytes=%u http_ms=%llu parse_ms=%llu append_ms=%llu", p.slug, platform_id, offset, added, total, (unsigned int)strlen(response), t1 - t0, t2 - t1, t3 - t2);
+            snprintf(detail, sizeof(detail), "slug=%s id=%d offset=%d limit=%d added=%d total=%d bytes=%u http_ms=%llu parse_ms=%llu append_ms=%llu", p.slug, platform_id, offset, page_size, added, total, (unsigned int)strlen(response), t1 - t0, t2 - t1, t3 - t2);
             log_event("page loaded", detail);
 
-            if (added <= 0 || added < ROMM_PAGE_SIZE || (total > 0 && offset + ROMM_PAGE_SIZE >= total)) break;
-            offset += ROMM_PAGE_SIZE;
+            if (added <= 0 || added < page_size || (total > 0 && offset + page_size >= total)) break;
+            offset += page_size;
         }
     }
 

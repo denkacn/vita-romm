@@ -38,6 +38,9 @@ static bool app_init(BitmapFont *font) {
     init_defaults(&state);
     state.library_worker.lock = sceKernelCreateSema("vita_romm_games_lock", 0, 1, 1, NULL);
     sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
+    // The stock 333 MHz clock bottlenecks curl and zip extraction.
+    scePowerSetArmClockFrequency(444);
+    scePowerSetBusClockFrequency(222);
     ensure_config(&state);
     debug_log_event(&state, "app init", "config ready");
     init_network(&state);
